@@ -1,0 +1,14 @@
+/* ================= 创作工作台 · 样式入口 =================
+ * 规则本体在 src/styles/ 下按分区拆开；这里只按顺序导入。
+ * Vite 会把它们合成一个 index.css 产物，所以拆文件不增加请求，也不改变层叠顺序。
+ */
+@import './styles/base.css';
+@import './styles/views.css';
+@import './styles/panels.css';
+@import './styles/convo.css';
+@import './styles/flavor.css';
+@import './styles/gacha.css';
+@import './styles/outline.css';
+@import './styles/cards.css';
+@import './styles/graph.css';
+@import './styles/pitch.css';

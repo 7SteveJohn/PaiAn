@@ -1,0 +1,547 @@
+/* 每日目标、AI 对话、Markdown 渲染、专注模式、热力图、标记侧线（从 index.css 拆出，顺序即层叠顺序，请勿单独调整导入次序） */
+
+/* ================= 每日目标 ================= */
+
+.goal-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.goal-label {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.goal-input {
+  width: 90px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  padding: 5px 6px;
+  font-size: 14px;
+  font-family: var(--font-mono);
+  color: var(--ink);
+  outline: none;
+}
+
+.goal-input:focus {
+  border-bottom-color: var(--accent);
+}
+
+.goal-track {
+  flex: 1;
+  min-width: 140px;
+  max-width: 320px;
+  height: 8px;
+  background: var(--paper-deep);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.goal-bar {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.goal-num {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ================= AI 对话 ================= */
+
+.chat-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  animation: rise 0.3s both;
+}
+
+.chat-sessions {
+  width: 210px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.new-chat {
+  margin-bottom: 8px;
+  justify-content: center;
+}
+
+.chat-sid {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  background: none;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: #5f5849;
+  font-family: var(--font-ui);
+}
+
+html[data-theme='dark'] .chat-sid {
+  color: var(--muted);
+}
+
+.chat-sid svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.chat-sid:hover {
+  background: var(--card);
+  color: var(--ink);
+}
+
+.chat-sid.on {
+  background: var(--card);
+  border-color: var(--line);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chat-sid-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-sid-del {
+  display: none;
+  padding: 2px;
+}
+
+.chat-sid:hover .chat-sid-del {
+  display: inline-flex;
+}
+
+.chat-main {
+  flex: 1;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 210px);
+  min-height: 420px;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-serif);
+}
+
+.chat-starters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 82%;
+}
+
+.msg.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.msg.assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.msg-bubble {
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg.user .msg-bubble {
+  background: var(--accent);
+  color: var(--card);
+  border-bottom-right-radius: 2px;
+}
+
+.msg.assistant .msg-bubble {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 2px;
+}
+
+.msg-thinking {
+  color: var(--muted);
+}
+
+.dot-anim {
+  animation: pulse 1s infinite;
+}
+
+.msg-copy {
+  opacity: 0;
+  margin-top: 2px;
+}
+
+.msg:hover .msg-copy {
+  opacity: 1;
+}
+
+.chat-input-row {
+  border-top: 1px solid var(--line);
+  padding: 14px 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.chat-input-row textarea {
+  flex: 1;
+  border: none;
+  background: transparent;
+  resize: none;
+  outline: none;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--ink);
+  min-height: 44px;
+}
+
+/* ================= Markdown 渲染（预览 + 对话） ================= */
+
+.md-body {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 2;
+  color: var(--ink);
+}
+
+.md-body.preview {
+  min-height: 52vh;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3 {
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin: 1.2em 0 0.5em;
+  line-height: 1.5;
+}
+
+.md-body h1 {
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.md-body h2 {
+  font-size: 1.25em;
+}
+
+.md-body h3 {
+  font-size: 1.1em;
+}
+
+.md-body p {
+  margin: 0.6em 0;
+}
+
+.md-body blockquote {
+  margin: 0.8em 0;
+  padding: 4px 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--paper);
+  color: var(--muted);
+}
+
+.md-body code {
+  font-size: 0.88em;
+  background: var(--paper-deep);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+.md-body pre {
+  background: var(--paper-deep);
+  padding: 12px 14px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.md-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.md-body ul,
+.md-body ol {
+  padding-left: 1.6em;
+  margin: 0.5em 0;
+}
+
+.md-body li {
+  margin: 0.25em 0;
+}
+
+.md-body a {
+  color: var(--teal);
+}
+
+.md-body hr {
+  border: none;
+  border-top: 1px dashed var(--line);
+  margin: 1.4em 0;
+}
+
+.md-body table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+}
+
+.md-body th,
+.md-body td {
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  font-size: 0.95em;
+}
+
+/* ================= 专注模式 ================= */
+
+body.focus-mode .sidebar {
+  display: none;
+}
+
+body.focus-mode .writer-meta {
+  display: none;
+}
+
+body.focus-mode .ai-rail {
+  display: none;
+}
+
+body.focus-mode .writer {
+  max-width: 780px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+body.focus-mode .paper {
+  min-height: 70vh;
+  padding-top: 16vh;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+body.focus-mode .main {
+  padding-top: 20px;
+}
+
+body.focus-mode .writer-foot {
+  max-width: 780px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ================= 写作热力图 ================= */
+
+.heat-sec {
+  margin-top: 30px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 18px 20px;
+}
+
+.heat-grid {
+  display: grid;
+  grid-template-rows: repeat(7, 13px);
+  grid-auto-flow: column;
+  gap: 3px;
+}
+
+.heat-cell {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.heat-cell.l0 {
+  background: var(--paper-deep);
+}
+
+.heat-cell.l1 {
+  background: var(--accent-soft);
+}
+
+.heat-cell.l2 {
+  background: color-mix(in srgb, var(--accent) 45%, var(--paper-deep));
+}
+
+.heat-cell.l3 {
+  background: color-mix(in srgb, var(--accent) 75%, var(--paper-deep));
+}
+
+.heat-cell.l4 {
+  background: var(--accent);
+}
+
+.heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.heat-legend .heat-cell {
+  width: 10px;
+  height: 10px;
+}
+
+/* ================= 项目字数目标进度 ================= */
+
+.proj-target {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.proj-target-track {
+  width: 130px;
+  height: 5px;
+  background: var(--paper-deep);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.proj-target-bar {
+  display: block;
+  height: 100%;
+  background: var(--teal);
+  border-radius: 2px;
+}
+
+.proj-target-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.link-ops {
+  display: inline-flex;
+  gap: 2px;
+  flex: none;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ================= 写作/复盘模式切换 ================= */
+
+.mode-seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  flex: none;
+}
+
+.mode-seg button {
+  border: none;
+  background: transparent;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--muted);
+  font-family: var(--font-ui);
+}
+
+.mode-seg button.on {
+  background: var(--accent);
+  color: var(--card);
+}
+
+/* ================= 标记侧线 / 禁用词 / 悬浮菜单 ================= */
+
+.mk-line-fb {
+  border-left: 2px solid #d98e2b;
+}
+
+.mk-line-egg {
+  border-left: 2px solid #9a6bd6;
+}
+
+.mk-line-char {
+  border-left: 2px solid #4d8fd1;
+}
+
+.mk-line-scene {
+  border-left: 2px solid #3f9e7d;
+}
+
+.mk-line-frag {
+  border-left: 2px solid var(--muted);
+}
+
+.cm-content .mk-line-fb,
+.cm-content .mk-line-egg,
+.cm-content .mk-line-char,
+.cm-content .mk-line-scene,
+.cm-content .mk-line-frag {
+  padding-left: 8px;
+}
+
+.forbidden-word {
+  color: var(--muted);
+  opacity: 0.55;
+  text-decoration: underline wavy var(--line);
+  text-underline-offset: 4px;
+}

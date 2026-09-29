@@ -1,0 +1,625 @@
+/* 主题与骨架：变量、布局、侧边栏、通用元素（从 index.css 拆出，顺序即层叠顺序，请勿单独调整导入次序） */
+
+/* ================= 拍案 · 墨水瓶精灵风（墨水蓝 + 瓶盖金 + 奶油纸，呼应应用图标） ================= */
+
+:root {
+  --paper: #f9f5ea;
+  --paper-deep: #f1ead9;
+  --card: #fffdf7;
+  --ink: #1e2433;
+  --muted: #6d7280;
+  --line: #e6dfcc;
+  --accent: #2c4a6e;
+  --accent-ink: #1e3450;
+  --accent-soft: #e5edf6;
+  --teal: #0f766e;
+  --teal-soft: #ccfbf1;
+  --amber: #9c6b16;
+  --amber-soft: #f7ecd2;
+  --font-serif: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'STSong', SimSun, serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
+  --shadow-tint: 30, 36, 51;
+  --bar: #ddd3bc;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.08), 0 4px 8px -2px rgba(0, 0, 0, 0.04);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+/* 夜间模式：深墨蓝 + 亮墨水（墨水瓶身的夜，图标的另一面） */
+html[data-theme='dark'] {
+  --paper: #131720;
+  --paper-deep: #0e1218;
+  --card: #1a2130;
+  --ink: #eef1f6;
+  --muted: #949cb0;
+  --line: #2a3347;
+  --accent: #7fa8d9;
+  --accent-ink: #a5c6ea;
+  --accent-soft: rgba(127, 168, 217, 0.14);
+  --teal: #2dd4bf;
+  --teal-soft: rgba(45, 212, 191, 0.15);
+  --amber: #e5b95c;
+  --amber-soft: rgba(229, 185, 92, 0.14);
+  --shadow-tint: 0, 0, 0;
+  --bar: #26304a;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.4), 0 2px 6px -1px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.5), 0 4px 8px -2px rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme='dark'] body::before {
+  display: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 移除发脏发灰的噪点滤镜，保持界面纯净通透 */
+body::before {
+  display: none;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--paper-deep);
+  color: var(--accent-ink);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+/* ================= 布局骨架 ================= */
+
+.shell {
+  display: flex;
+  height: 100%;
+  position: relative;
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 36px 48px 64px;
+  min-width: 0;
+}
+
+/* ================= 桌面版标题栏 =================
+ * 系统那条标题栏是白底的，跟米色正文之间一道硬分界。Electron 里把它藏掉：
+ * 顶部 40px 由页面自己当拖拽区，右上角留给原生窗口按钮（贴边吸附、Win11 布局都还在）。
+ * 浏览器 / 启动 bat 打开时没有 html.desktop，这些规则一条都不生效。 */
+html.desktop .view-head {
+  -webkit-app-region: drag;
+  /* 让拖拽区一直盖到窗口最上沿（.main 有 36px 上内边距），下面又留回同样的空间 */
+  margin-top: -36px;
+  padding-top: 36px;
+  /* 右上角 138px 是窗口按钮的地盘，别把功能按钮排到它底下 */
+  padding-right: 150px;
+}
+
+/* 标题栏里的直接子元素都要能点：拖拽区会吞掉落在它上面的鼠标事件 */
+html.desktop .view-head > * {
+  -webkit-app-region: no-drag;
+}
+
+html.desktop .brand {
+  -webkit-app-region: drag;
+}
+
+/* 滚动后正文会直接顶进窗口按钮那 40px（硬切很难看），加一条纸色渐隐遮罩让内容
+   滚入标题栏时自然淡出。只在 .main 真滚动时亮出（App 层滚动监听切 body.main-scrolled）。
+   z-index 压过正文层、低于一切浮层（46+）；sidebar 是固定列不滚动，遮罩从它右边开始。 */
+html.desktop body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 210px;
+  right: 0;
+  height: 72px;
+  /* 0-40 全浓（与原生 overlay 按钮色块同色同高）、40-72 渐出：
+     overlay 底边/左边缘的硬切线落进全浓区被糊掉，正文从 40px 线下软着陆 */
+  background: linear-gradient(to bottom, var(--paper) 0, var(--paper) 40px, transparent);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+  transition: opacity 0.18s ease;
+}
+
+html.desktop body.main-scrolled::after {
+  opacity: 1;
+}
+
+/* 专注模式藏了 sidebar，.main 全宽，遮罩跟着贴左边 */
+html.desktop body.focus-mode::after {
+  left: 0;
+}
+
+/* 顶部 40px 是原生窗口按钮的地盘，遮罩淡出到 72px：吸附类侧栏滚到顶时停在
+   遮罩下沿之外（视口 y≈76），边框完整清晰，不与按钮区打架（浏览器里无此问题，不限定）。
+   top 的参考线是 .main 的 content box（视口顶再往下 36px padding）；只改吸附位置
+   不影响未滚动布局，各栏 max-height 余量足够不戳出视口底。 */
+html.desktop .ai-rail:not(.floating),
+html.desktop .ai-strip,
+html.desktop .drawer,
+html.desktop .chap-side {
+  top: 40px;
+}
+
+/* 窄窗口下抽屉是 fixed 浮层、有自己的顶边（views.css top:184），显式压回，
+   不靠加载顺序碰运气 */
+@media (max-width: 1439px) {
+  html.desktop .writer > .drawer {
+    top: 184px;
+  }
+}
+
+/* ================= 侧边栏 ================= */
+
+.sidebar {
+  width: 210px;
+  flex: none;
+  background: var(--paper-deep);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  padding: 30px 18px 22px;
+}
+
+.seal {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-ink));
+  color: #ffffff;
+  font-family: var(--font-serif);
+  font-size: 23px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  box-shadow: 0 3px 10px rgba(194, 65, 12, 0.28);
+}
+
+.brand-name {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: 3px;
+  margin-top: 16px;
+}
+
+.brand-sub {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 2.5px;
+  margin-top: 5px;
+  font-family: var(--font-mono);
+}
+
+.sidebar nav {
+  margin-top: 38px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  color: #5f5849;
+  font-size: 13.5px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+  border-radius: 0 6px 6px 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+html[data-theme='dark'] .nav-item {
+  color: var(--muted);
+}
+
+.nav-tile {
+  width: 27px;
+  height: 27px;
+  flex: none;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--c) 13%, transparent);
+  color: var(--c);
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-item:hover {
+  color: var(--ink);
+  background: rgba(255, 253, 247, 0.65);
+}
+
+html[data-theme='dark'] .nav-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.nav-item:hover .nav-tile {
+  background: color-mix(in srgb, var(--c) 24%, transparent);
+}
+
+.nav-item.active {
+  color: var(--ink);
+  border-left-color: var(--c, var(--accent));
+  background: var(--card);
+  font-weight: 600;
+}
+
+.nav-item.active .nav-tile {
+  background: var(--c, var(--accent));
+  color: #fffdf7;
+}
+
+.nav-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: auto;
+}
+
+.save-state {
+  margin-top: auto;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.dot.saved {
+  background: #4a7a43;
+}
+
+.dot.dirty {
+  background: var(--amber);
+}
+
+.dot.saving {
+  background: var(--muted);
+  animation: pulse 1s infinite;
+}
+
+.dot.error {
+  background: var(--accent-ink);
+}
+
+.save-state.err {
+  color: var(--accent-ink);
+}
+
+.save-state.clickable {
+  cursor: pointer;
+}
+
+.save-state.clickable:hover {
+  text-decoration: underline;
+}
+
+/* ================= 通用元素 ================= */
+
+.view-head {
+  margin-bottom: 24px;
+}
+
+.view-head.with-action {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.overline {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.view-head h1 {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 700;
+  margin: 8px 0 0;
+  letter-spacing: 2px;
+}
+
+.head-rule {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 18px 0 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--paper-deep);
+  border-color: color-mix(in srgb, var(--line) 70%, var(--ink));
+  color: var(--ink);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-ink));
+  border: 1px solid transparent;
+  color: #ffffff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 92%, #fff), var(--accent-ink));
+  transform: translateY(-1px);
+  box-shadow: 0 5px 15px color-mix(in srgb, var(--accent) 40%, transparent);
+  color: #ffffff;
+}
+
+.btn.small {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.btn.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.icon-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.icon-btn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+  transform: scale(1.05);
+}
+
+.mini-btn {
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  transition: all 0.15s ease;
+}
+
+.mini-btn:hover {
+  color: var(--ink);
+  background: var(--paper-deep);
+  border-color: var(--line);
+}
+
+.mini-btn.accent {
+  color: var(--accent);
+}
+
+.mini-btn.accent:hover {
+  background: var(--accent-soft);
+}
+
+.chip {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 999px;
+  padding: 4px 13px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chip:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.chip.on {
+  background: var(--ink);
+  color: var(--card);
+  border-color: var(--ink);
+}
+
+.filters {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.search {
+  flex: 0 0 240px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  padding: 7px 2px;
+  font-size: 13px;
+  outline: none;
+  font-family: var(--font-ui);
+  color: var(--ink);
+}
+
+.search:focus {
+  border-bottom-color: var(--accent);
+}
+
+.filter-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.empty {
+  margin-top: 60px;
+  text-align: center;
+  color: var(--muted);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+
+.empty .empty-line {
+  display: block;
+}
+
+.empty .empty-sub {
+  display: block;
+  margin-top: 12px;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  opacity: 0.85;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.9;
+  margin: 6px 0;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}

@@ -1,0 +1,715 @@
+/* 卡池：动效层、账本、图鉴、手牌条与门禁（从 index.css 拆出，顺序即层叠顺序，请勿单独调整导入次序） */
+
+/* ================= 卡池抽卡：动效层、账本、图鉴、手牌条 ================= */
+
+/* 稀有度只决定描边与光柱颜色，不改变字号——卡牌不该比正文更抢眼 */
+.r-N {
+  --rr: #8d8474;
+}
+.r-R {
+  --rr: var(--teal);
+}
+.r-SR {
+  --rr: #7c3aed;
+}
+.r-SSR {
+  --rr: var(--accent);
+}
+
+.gacha-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 17, 15, 0.62);
+  backdrop-filter: blur(3px);
+  animation: rise 0.25s both;
+}
+
+.gacha-beam {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 55%, var(--rr), transparent 58%);
+  opacity: 0.3;
+  animation: beam 1.5s ease-out both;
+}
+
+@keyframes beam {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  55% {
+    opacity: 0.42;
+  }
+  100% {
+    opacity: 0.26;
+    transform: scale(1);
+  }
+}
+
+.gacha-inner {
+  position: relative;
+  width: min(94vw, 880px);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 18px 22px 22px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.gacha-stage.has-ssr .gacha-inner {
+  animation: shake 0.5s ease-out 0.35s both;
+  border-color: var(--accent);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-3px, 2px, 0); }
+  40% { transform: translate3d(3px, -2px, 0); }
+  60% { transform: translate3d(-2px, -1px, 0); }
+  80% { transform: translate3d(2px, 1px, 0); }
+}
+
+.gacha-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.gacha-title {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.gacha-hint {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.gacha-cards {
+  display: grid;
+  gap: 12px;
+}
+
+.gacha-cards.one {
+  grid-template-columns: 1fr;
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+.gacha-cards.many {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+@media (max-width: 900px) {
+  .gacha-cards.many {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 翻牌：容器转 180 度，两面各自 backface 隐藏 */
+.gacha-card {
+  position: relative;
+  height: 210px;
+  perspective: 900px;
+  transform-style: preserve-3d;
+  transition: transform 0.52s cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+.gacha-card.flipped {
+  transform: rotateY(180deg);
+}
+
+.gc-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border: 1px solid var(--rr);
+  border-radius: var(--radius-md);
+  padding: 10px 11px;
+  overflow: hidden;
+}
+
+.gc-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(150deg, var(--paper-deep), var(--card) 55%, var(--paper-deep));
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--rr) 16%, transparent);
+}
+
+.gc-seal {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  color: color-mix(in srgb, var(--rr) 60%, var(--muted));
+}
+
+.gc-front {
+  transform: rotateY(180deg);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gc-rarity {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  color: var(--rr);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.gc-series {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.gc-name {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.gc-text {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.62;
+  color: var(--muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+}
+
+.gc-effect {
+  margin-top: auto;
+  font-size: 10.5px;
+  color: var(--rr);
+}
+
+.gacha-body {
+  padding: 0 26px 26px;
+  overflow: auto;
+}
+
+.gacha-wallet {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(92px, 1fr)) minmax(130px, 1.4fr);
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.gacha-wallet .gw-acts {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.gacha-flash {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--amber);
+}
+
+.gw-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.gw-tile b {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.gw-tile em {
+  font-style: normal;
+  font-size: 11px;
+}
+
+.gw-pity {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.gw-track {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--paper-deep);
+  overflow: hidden;
+}
+
+.gw-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--teal), var(--accent));
+  transition: width 0.4s ease;
+}
+
+.gacha-series {
+  margin-top: 22px;
+}
+
+.gacha-series h4 {
+  margin: 0 0 2px;
+  font-family: var(--font-serif);
+  font-size: 15px;
+}
+
+.gacha-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.mini-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  min-height: 112px;
+}
+
+.mini-card.owned {
+  border-style: solid;
+  border-color: var(--rr);
+  background: var(--card);
+}
+
+.mc-r {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--rr);
+}
+
+.mc-name {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.mc-text {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.mc-foot {
+  margin-top: auto;
+  font-size: 10.5px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+}
+
+.mc-foot em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.mc-acts {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.mini-card.lit .mc-foot {
+  color: var(--teal);
+}
+
+.mc-change {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  font-size: 10.5px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.mc-change:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.gacha-rates {
+  margin-top: 26px;
+  padding: 16px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.gacha-rates h4 {
+  margin: 0 0 4px;
+  font-family: var(--font-serif);
+  font-size: 14px;
+}
+
+.pool-list {
+  margin-top: 8px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.pool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pool-row.off {
+  opacity: 0.45;
+}
+
+.pool-row b {
+  font-family: var(--font-serif);
+  font-weight: 600;
+}
+
+.pr-r {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--rr);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 5px;
+}
+
+.pool-row .pr-eff {
+  color: var(--muted);
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hand-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 16px 0;
+  font-size: 12px;
+}
+
+/* 专注模式收起一切可点的发光东西：写正文时不该有干扰源 */
+body.focus-mode .hand-strip {
+  display: none;
+}
+
+.hs-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.hs-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.hs-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 6px 3px 8px;
+  border: 1px solid var(--rr);
+  border-radius: 999px;
+  background: var(--card);
+}
+
+.hs-card b {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.hs-card em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--rr);
+}
+
+.hs-text {
+  color: var(--muted);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hs-play {
+  border: 1px solid var(--rr);
+  background: color-mix(in srgb, var(--rr) 12%, transparent);
+  color: var(--rr);
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 9px;
+  cursor: pointer;
+}
+
+.hs-play:hover {
+  background: color-mix(in srgb, var(--rr) 24%, transparent);
+}
+
+.hs-msg {
+  color: var(--teal);
+  font-size: 11.5px;
+}
+
+/* 尊重系统的「减少动效」偏好：翻牌与金光停掉，功能照用 */
+@media (prefers-reduced-motion: reduce) {
+  .gacha-card,
+  .gacha-beam,
+  .gacha-stage.has-ssr .gacha-inner,
+  .gw-fill {
+    animation: none;
+    transition: none;
+  }
+  .gacha-card {
+    transform: rotateY(180deg);
+  }
+}
+
+.hs-ongoing {
+  border-style: dashed;
+  --rr: var(--muted);
+}
+
+.hs-ongoing.done {
+  border-style: solid;
+  --rr: var(--teal);
+}
+
+.hs-ongoing em {
+  font-family: var(--font-mono);
+}
+
+.gc-cond,
+.mc-cond {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--teal);
+  font-family: var(--font-mono);
+}
+
+.hs-combo-btn {
+  border: 1px dashed var(--teal);
+  background: none;
+  color: var(--teal);
+  font-size: 11.5px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.hs-combo-btn:hover {
+  background: var(--teal-soft);
+}
+
+.hs-combo {
+  --rr: var(--teal);
+}
+
+/* 拆文对标：表格化节奏对照，颜色只用「值得学」一处，避免和卡牌色系打架 */
+.bench-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bench-form textarea,
+.bench-form input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  padding: 7px 9px;
+}
+
+.bench-form textarea {
+  font-family: var(--font-serif);
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.form-acts {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.bench-msg {
+  color: var(--teal) !important;
+  margin-top: 6px !important;
+}
+
+.bench-cmp {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.bc-head,
+.bc-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1.6fr) repeat(2, minmax(48px, 0.6fr)) minmax(110px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.bc-head {
+  background: var(--paper-deep);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.bc-row {
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.bc-row b {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.bc-row.worth {
+  background: color-mix(in srgb, var(--teal) 7%, transparent);
+}
+
+.bc-label {
+  color: var(--muted);
+}
+
+.bc-diff {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bc-diff em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--teal);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 5px;
+}
+
+.bench-cmp .btn {
+  margin: 8px 10px 10px;
+}
+
+.bench-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bench-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px 2px 8px;
+}
+
+.bench-row.on {
+  border-color: var(--teal);
+}
+
+.br-pick {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 3px 0;
+  font-family: var(--font-ui);
+  text-align: left;
+}
+
+.br-pick b {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.br-stat {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}

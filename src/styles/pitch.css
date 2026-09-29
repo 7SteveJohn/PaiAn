@@ -1,0 +1,217 @@
+/* ================= 节律区：节奏琴键 / 对白天平 / 伏笔利息（复盘栏顶部整行） ================= */
+
+.pitch {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--line);
+  margin-bottom: 4px;
+}
+
+.pitch-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 1080px) {
+  .pitch-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pitch-card h4 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.pitch-card h4 svg {
+  align-self: center;
+}
+
+.pitch-meta {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.pk-sub {
+  margin: 14px 0 4px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+/* ---- 琴键 ---- */
+.pk-roll {
+  display: block;
+  width: 100%;
+  height: 122px;
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.pk-bar {
+  stroke: var(--line);
+  stroke-width: 0.6;
+}
+
+.pk-median {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.55;
+}
+
+.pk-dot {
+  fill: var(--accent-ink);
+}
+
+.pk-slop {
+  fill: #b4544f;
+  opacity: 0.7;
+}
+
+/* ---- 天平 ---- */
+.pk-speakers,
+.pk-absent,
+.pk-debts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pk-speakers li {
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.pk-who {
+  font-family: var(--font-serif);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pk-track {
+  height: 7px;
+  background: var(--paper-deep);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.pk-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-ink));
+}
+
+.pk-speakers em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pk-absent li,
+.pk-debt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pk-absent b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ---- 伏笔利息 ---- */
+.pk-debt b {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 13px;
+}
+
+.pk-lv {
+  font-style: normal;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  flex: none;
+  min-width: 46px;
+  text-align: center;
+}
+
+.pk-lv-soon {
+  border-color: #b9a06a;
+  color: #7c6220;
+}
+
+.pk-lv-late {
+  border-color: #d9a441;
+  color: #8a6413;
+}
+
+.pk-lv-lost {
+  border-color: #b4544f;
+  color: #8d2f2a;
+  font-weight: 600;
+}
+
+.lv-lost {
+  background: rgba(180, 84, 79, 0.07);
+  border-radius: var(--radius-sm);
+  padding: 3px 5px;
+}
+
+.pk-when {
+  margin-left: auto;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pk-debt-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+
+/* ================= 设定守夜人（复盘栏第二屏）：证据要能换行读完，不许被省略号吃掉 ================= */
+
+.wd .pk-debt {
+  align-items: flex-start;
+}
+
+.wd .pk-when {
+  margin-left: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.wd-skip {
+  margin-top: 6px;
+}
