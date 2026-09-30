@@ -1,0 +1,554 @@
+/* 设定卡模板、AI 导入、时间线、章节探讨、分卷、分章字数（从 index.css 拆出，顺序即层叠顺序，请勿单独调整导入次序） */
+
+/* ================= 🟡：设定卡模板 / AI 导入 / 时间线 / 章节探讨 ================= */
+
+.ol-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tpl-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.import-box {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.import-preview {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.import-card {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.import-card.skipped {
+  opacity: 0.45;
+}
+
+.import-card .char-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tl-wrap {
+  animation: rise 0.3s both;
+}
+
+.tl-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.tl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+}
+
+.tl-row.changed {
+  border-color: var(--accent);
+}
+
+.tl-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+}
+
+.tl-input {
+  flex: none;
+  width: 210px;
+}
+
+.tl-gist {
+  flex: none;
+  width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* 双轨时间轴：上轨章节序、下轨故事内时间，同一比例尺。正常书写带子近似水平，
+   同一标签跨区间复现（疑似闪回）会拉出回线并描红。 */
+.tl-track-wrap {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  padding: 10px 12px 8px;
+  margin-bottom: 10px;
+}
+
+.tl-track {
+  display: block;
+  width: 100%;
+  height: 88px;
+}
+
+.tl-rail {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.tl-dot {
+  fill: var(--accent);
+  opacity: 0.55;
+}
+
+.tl-dot-miss {
+  fill: var(--muted);
+  opacity: 0.4;
+}
+
+.tl-band {
+  fill: var(--accent);
+  opacity: 0.32;
+}
+
+.tl-band-miss {
+  fill: var(--muted);
+  opacity: 0.25;
+}
+
+.tl-band-repeat {
+  fill: none;
+  stroke: var(--amber, #c0392b);
+  stroke-width: 1.4;
+}
+
+.tl-track-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.tl-repeat {
+  color: var(--amber, #c0392b);
+}
+
+.discuss-box {
+  margin-top: 10px;
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.discuss-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.discuss-msg {
+  display: flex;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.discuss-msg.user {
+  background: var(--paper-deep);
+}
+
+.discuss-msg.assistant {
+  border-left: 2px solid var(--accent);
+}
+
+.discuss-who {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  padding-top: 2px;
+}
+
+.discuss-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.discuss-input {
+  display: flex;
+  gap: 8px;
+}
+
+.discuss-input input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12.5px;
+  padding: 6px 9px;
+  outline: none;
+}
+
+.discuss-input input:focus {
+  border-color: var(--accent);
+}
+
+.discuss-ops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.beats-draft {
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ================= 分卷：大纲按卷分组 ================= */
+
+.vol-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vol-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.vol-name {
+  flex: none;
+  width: 240px;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  background: transparent;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 2px 0;
+  outline: none;
+}
+
+.vol-name:focus {
+  border-bottom-color: var(--accent);
+}
+
+.vol-name::placeholder {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.vol-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* 编辑器懒加载占位 */
+
+.editor-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 240px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ================= 分章字数统计 ================= */
+
+.ch-len {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+}
+
+.ch-len-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.ch-len-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.ch-vol {
+  margin-top: 8px;
+  font-family: var(--font-serif);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 3px;
+}
+
+.ch-len-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ch-len-name {
+  flex: none;
+  width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+/* ---------- 作品健康度状态条 ---------- */
+.health-card {
+  margin: 2px 0 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--teal);
+  border-radius: 8px;
+  background: var(--paper-deep);
+  padding: 10px 14px 12px;
+}
+
+.health-card.s-info {
+  border-left-color: var(--accent);
+}
+
+.health-card.s-warn {
+  border-left-color: var(--amber);
+}
+
+.health-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.health-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.health-state {
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.health-state.ok {
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.health-state.warn {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.health-state.info {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+
+.health-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 7px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.health-stats b {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.health-progress {
+  height: 4px;
+  margin-top: 9px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.health-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.health-issues {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.health-issue {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.health-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.health-issue.warn .health-dot {
+  background: var(--amber);
+}
+
+.health-body {
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.health-text {
+  color: var(--ink);
+}
+
+.health-act {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---------- 全书梗概（滚动摘要）卡片 ---------- */
+.arc-card {
+  margin: 10px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  padding: 8px 10px 10px;
+}
+
+.arc-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+
+.arc-head:hover .arc-name {
+  color: var(--accent);
+}
+
+.arc-name {
+  font-weight: 600;
+}
+
+.arc-head .chip {
+  margin-left: auto;
+}
+
+.chip.dim {
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--line);
+}
+
+.arc-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.arc-text {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  max-height: 280px;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--ink);
+}
+
+.arc-at {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}

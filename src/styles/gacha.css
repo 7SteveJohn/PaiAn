@@ -1,0 +1,724 @@
+/* 抽卡三签与要素标签、创建向导、写作规则、章节侧栏、供应商预设、大纲与批量（从 index.css 拆出，顺序即层叠顺序，请勿单独调整导入次序） */
+
+/* ================= 抽卡模式 / 要素标签 ================= */
+
+.gacha-chip {
+  margin-left: auto;
+  padding: 2px 9px;
+  font-size: 11px;
+}
+
+.gacha-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gacha-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  color: var(--ink);
+}
+
+.gacha-card.on {
+  border-color: var(--accent);
+  box-shadow: 2px 2px 0 var(--accent-soft);
+}
+
+.gacha-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.gacha-head em {
+  font-style: normal;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.gacha-body {
+  font-size: 12.5px;
+  line-height: 1.8;
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-serif);
+}
+
+.tagchip {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin: 0 2px;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+/* ================= AI 引导创建向导 ================= */
+
+.wizard-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(var(--shadow-tint), 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.wizard-panel {
+  width: min(880px, 100%);
+  max-height: 90vh;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 8px 12px 40px rgba(var(--shadow-tint), 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: rise 0.25s both;
+}
+
+.wizard-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.wizard-head > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-ink);
+}
+
+.wizard-steps {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.wizard-steps em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.wizard-steps em.on {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.wizard-steps em.done {
+  color: var(--teal);
+}
+
+.wizard-step-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.wizard-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .wizard-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wizard-card {
+  align-items: stretch;
+}
+
+.wizard-card-body {
+  max-height: 300px;
+  font-size: 12px;
+}
+
+.wizard-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* ================= 写作规则 ================= */
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rule-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  opacity: 0.55;
+}
+
+.rule-row.on {
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.rule-content {
+  flex: 1;
+  min-height: 44px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  outline: none;
+  resize: vertical;
+}
+
+.rule-content:focus {
+  border-bottom-color: var(--accent);
+}
+
+/* ================= 章节侧栏 ================= */
+
+.proj-crumb {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: none;
+  font-family: var(--font-serif);
+}
+
+/* 书名常态看着还是那行小字，鼠标移上去才露出「可以点」的意思 */
+button.proj-crumb {
+  border: none;
+  background: none;
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  cursor: text;
+}
+
+button.proj-crumb:hover {
+  color: var(--ink);
+  background: var(--paper-deep);
+}
+
+.proj-crumb-edit {
+  font-size: 12px;
+  font-family: var(--font-serif);
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 1px 4px;
+  width: 150px;
+  flex: none;
+  outline: none;
+}
+
+.chap-side {
+  width: 232px;
+  flex: 0 1 232px;
+  min-width: 190px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 150px);
+  position: sticky;
+  top: 0;
+}
+
+.chap-side-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.chap-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.chap-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink);
+  position: relative;
+}
+
+.chap-item:hover {
+  background: var(--paper);
+}
+
+.chap-item.on {
+  background: var(--accent-soft);
+}
+
+.chap-item.on .chap-title {
+  font-weight: 700;
+}
+
+.chap-idx {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  flex: none;
+  width: 16px;
+  text-align: right;
+}
+
+.chap-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-serif);
+}
+
+.chap-words {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  flex: none;
+}
+
+.chap-ops {
+  display: none;
+  position: absolute;
+  right: 4px;
+  top: 3px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px;
+}
+
+.chap-item:hover .chap-ops {
+  display: inline-flex;
+}
+
+.chap-ops button {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 3px;
+  display: inline-flex;
+  border-radius: 2px;
+}
+
+.chap-ops button:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.chap-rename {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--ink);
+  outline: none;
+  font-family: var(--font-serif);
+}
+
+.chap-summary {
+  border-top: 1px dashed var(--line);
+  padding: 10px 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+/* ================= 供应商选择（多预设分组） ================= */
+
+.provider-select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent
+    url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E")
+    no-repeat right 4px center;
+  padding: 6px 22px 6px 0;
+  font-size: 13.5px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  outline: none;
+}
+
+.provider-select:focus {
+  border-bottom-color: var(--accent);
+}
+
+.proto-tag {
+  float: right;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.note-line {
+  margin: -10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
+}
+
+.key-link {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.key-link:hover {
+  text-decoration: underline;
+}
+
+.model-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.model-quick .field-label {
+  display: inline;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.chip.tiny {
+  padding: 2px 9px;
+  font-size: 11px;
+}
+
+/* ================= 大纲模式：章节大纲 + 批量写作 ================= */
+
+.outline-wrap {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 18px 20px;
+  overflow-y: auto;
+  max-height: calc(100vh - 210px);
+  animation: rise 0.3s both;
+}
+
+.outline-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 4px;
+}
+
+.outline-gen {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 14px 0 6px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+}
+
+.outline-gen label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+  padding: 10px 12px;
+  background: var(--paper-deep);
+  border-radius: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.batch-bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.batch-check {
+  cursor: pointer;
+}
+
+/* 批量生成前置门禁：拦下时才出现，作者选完就消失 */
+.gate-panel {
+  margin: 0 0 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--warn-line, #d9a441);
+  border-left-width: 3px;
+  border-radius: 4px;
+  background: var(--paper-deep);
+  animation: rise 0.18s both;
+}
+
+.gate-lore {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.gate-lore li {
+  font-size: 12px;
+  color: #8d2f2a;
+  font-variant-numeric: tabular-nums;
+}
+
+.gate-text {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.gate-panel .discuss-ops {
+  margin-top: 8px;
+}
+
+.gate-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 2px;
+  padding: 7px 10px;
+  border-radius: 4px;
+  background: rgba(217, 164, 65, 0.12);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* 细纲还没写到位的章：要点输入框给一点提示，不抢戏 */
+textarea.ol-thin {
+  border-style: dashed;
+}
+
+.ol-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ol-card {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px 14px;
+  background: var(--card);
+}
+
+.ol-card.running {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.ol-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ol-idx {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  flex: none;
+}
+
+.ol-title {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  padding: 2px 0;
+  outline: none;
+}
+
+.ol-title:focus {
+  border-bottom-color: var(--accent);
+}
+
+.ol-badge {
+  flex: none;
+  font-style: normal;
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 9px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.ol-badge.done {
+  color: var(--teal);
+  border-color: var(--teal);
+}
+
+.ol-badge.draft {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+
+.ol-words {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* 卡面上的删章按钮：一直看得见（只是淡），别再让人找不到怎么删 */
+.ol-del {
+  flex: none;
+}
+
+.ol-fields {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ol-fields label,
+.outline-gen label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ol-fields input,
+.ol-fields textarea {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  padding: 5px 8px;
+  outline: none;
+  resize: vertical;
+}
+
+.ol-fields input:focus,
+.ol-fields textarea:focus {
+  border-color: var(--accent);
+}
+
+.ol-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ol-summary {
+  font-size: 12px;
+  color: var(--muted);
+  border-left: 2px solid var(--teal);
+  padding-left: 8px;
+}
+
+.ol-ops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+
+.mini-btn.ok {
+  color: var(--teal);
+  border-color: var(--teal);
+}
+
+.ol-pending {
+  margin-top: 10px;
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
