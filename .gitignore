@@ -1,0 +1,38 @@
+# 依赖与构建产物
+node_modules/
+dist/
+release/
+
+# 用户数据（含 API Key，绝不入库；备份机制见 data/backups/）
+data/
+
+# 本地服务日志
+*.log
+
+# 编辑器/系统
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 助手工作区
+.mimosa/
+.workbuddy/
+
+# electron-builder 打包产物（含临时输出目录）
+release*/
+
+# 临时脚本与量测产物
+.tmp/
+# 回归测试临时产物
+.tmp-tests/
+# 性能压测临时产物
+.tmp-perf/
+# 长跑闭环模拟临时产物
+.tmp-loop/
+
+# 内置范文（示例作品全文），仅本地保留，不入库不上传
+src/sample.ts
+
+# 内部开发文档（含个人路径/产品规划），仅本地保留
+视频功能对照.md
+待完善清单.md

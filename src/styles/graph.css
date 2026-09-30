@@ -1,0 +1,396 @@
+/* ================= 牵线画布（写作页「牵线」模式） ================= */
+
+.gv {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  flex: 1;
+}
+
+.gv-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: var(--paper-deep);
+  border-radius: var(--radius-sm);
+}
+
+.gv-bar .btn {
+  white-space: nowrap;
+}
+
+.gv-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+}
+
+.gv-bar .foot-spacer,
+.gv .foot-spacer {
+  flex: 1;
+}
+
+.gv-kind {
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.gv-tip {
+  font-size: 11.5px;
+  line-height: 1.5;
+  flex: 1 1 240px;
+}
+
+.gv-zoom {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  min-width: 38px;
+  text-align: center;
+}
+
+.gv-main {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.gv-canvas {
+  flex: 1;
+  min-width: 0;
+  height: calc(100vh - 300px);
+  min-height: 380px;
+  background: var(--card);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 22px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  touch-action: none;
+  cursor: grab;
+}
+
+.gv-canvas:active {
+  cursor: grabbing;
+}
+
+.gv-side {
+  width: 292px;
+  flex: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 2px;
+}
+
+.gv-block h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 5px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+/* ---- 线 ---- */
+.gv-link {
+  fill: none;
+  stroke-width: 1.7;
+  cursor: pointer;
+}
+
+.gv-l-next {
+  stroke: var(--accent);
+}
+.gv-l-cast {
+  stroke: #6f9a7b;
+}
+.gv-l-kin {
+  stroke: #9a86c2;
+}
+.gv-l-hook {
+  stroke: #d9a441;
+  stroke-dasharray: 5 4;
+}
+.gv-l-free {
+  stroke: #7f8ea3;
+}
+
+.gv-link.on {
+  stroke-width: 3;
+}
+
+.gv-ghost {
+  stroke: var(--accent-ink);
+  stroke-dasharray: 4 4;
+  opacity: 0.75;
+}
+
+.gv-arrow {
+  stroke: none;
+}
+.gv-a-next {
+  fill: var(--accent);
+}
+.gv-a-cast {
+  fill: #6f9a7b;
+}
+.gv-a-kin {
+  fill: #9a86c2;
+}
+.gv-a-hook {
+  fill: #d9a441;
+}
+.gv-a-free {
+  fill: #7f8ea3;
+}
+
+/* ---- 节点 ---- */
+.gv-node {
+  cursor: move;
+}
+
+/* 演一遍：镜头只搬画布，其余压暗；当前这拍描金。转场跟着全站卡片节奏 0.25s */
+.gv-node {
+  transition: opacity 0.25s ease;
+}
+
+.gv-node.dim {
+  opacity: 0.32;
+}
+
+.gv-node.now rect {
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px rgba(217, 164, 65, 0.45));
+}
+
+/* 字幕条占一行（不浮在画布上：盖住节点就是盖住内容） */
+.gv-narr {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  font-size: 13px;
+  color: var(--ink);
+  animation: rise 0.25s ease both;
+}
+
+.gv-narr em {
+  font-style: normal;
+  flex: none;
+  font-size: 11.5px;
+  color: var(--accent-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.gv-narr-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gv-narr-meta {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.gv-node rect {
+  fill: var(--card);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.gv-n-chapter rect {
+  fill: var(--paper-deep);
+  stroke: var(--accent);
+}
+
+.gv-n-hook rect {
+  stroke: #d9a441;
+}
+
+.gv-n-note rect {
+  stroke-dasharray: 4 3;
+}
+
+.gv-node.on rect {
+  stroke: var(--accent-ink);
+  stroke-width: 2;
+}
+
+.gv-label {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  fill: var(--ink);
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.gv-flag {
+  font-size: 10.5px;
+  fill: var(--muted);
+  pointer-events: none;
+}
+
+.gv-port {
+  fill: var(--card);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  cursor: crosshair;
+  opacity: 0.35;
+}
+
+.gv-node:hover .gv-port,
+.gv-node.on .gv-port {
+  opacity: 1;
+}
+
+.gv-port-in {
+  fill: var(--line);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.gv-empty {
+  font-size: 12.5px;
+  fill: var(--muted);
+}
+
+/* ---- 侧栏细节 ---- */
+.gv-diag {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.gv-diag li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+}
+
+.gv-dk {
+  font-style: normal;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  flex: none;
+}
+
+.gv-dk-hook {
+  border-color: #d9a441;
+  color: #8a6413;
+}
+
+.gv-dk-next {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.gv-jump {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.gv-jump:hover {
+  color: var(--accent-ink);
+}
+
+.gv-note {
+  display: flex;
+  gap: 5px;
+}
+
+.gv-note input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.gv-detail {
+  border-left: 2px solid var(--accent);
+  padding-left: 9px;
+}
+
+.gv-ops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.gv-depth {
+  margin: 5px 0;
+}
+
+.gv-depth label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.gv-depth input {
+  width: 46px;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.gv-ctx {
+  margin: 6px 0 0;
+  padding: 8px 9px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-deep);
+  font-family: var(--font-serif);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+
+.gv-msg {
+  padding: 6px 8px;
+  border-left: 2px solid var(--accent);
+  background: var(--paper-deep);
+  color: var(--ink);
+  line-height: 1.6;
+}

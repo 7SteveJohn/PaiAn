@@ -1,0 +1,14 @@
+# 统一换行：入库一律 LF，检出按平台（Windows 为 CRLF）
+* text=auto
+
+*.json text
+*.md text
+*.ts text
+*.tsx text
+*.css text
+*.js text
+
+# 二进制不参与换行转换
+*.png binary
+*.jpg binary
+*.ico binary
