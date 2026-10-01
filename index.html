@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%23BC3F2C'/%3E%3Ctext x='32' y='45' font-size='34' text-anchor='middle' fill='%23FFFDF7' font-family='serif'%3E%E5%88%9B%3C/text%3E%3C/svg%3E" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 主题必须在首屏之前进 DOM：等 React effect 就晚了，暗色用户会先闪一帧浅色 -->
+    <script>
+      (function () {
+        var theme = 'light'; // 兜底：localStorage 在部分环境会抛错（隐身/受限），按浅色处理
+        try {
+          theme = localStorage.getItem('ww-theme') === 'dark' ? 'dark' : 'light';
+        } catch (e) {}
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <title>拍案 · 创作工作台</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

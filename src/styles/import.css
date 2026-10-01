@@ -1,0 +1,381 @@
+/* 导入面板：粘贴 / 本地文件 / 文件夹 / 拖拽 / Obsidian 库 五条来源共用一套拆章预览与落点。
+   这是全项目唯一的导入入口，样式上与旧「从 Obsidian 导入」面板保持同一家族。 */
+
+.import-panel {
+  margin-top: 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 18px 20px;
+  animation: rise 0.3s both;
+  position: relative;
+}
+
+/* 拖拽落区：整块面板都是落点，别让人去找那条窄缝 */
+.import-panel.dragging {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.import-panel.dragging::after {
+  content: '松手就读进来';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  letter-spacing: 3px;
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--card) 84%, transparent);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.imp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.imp-head h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  letter-spacing: 1px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.imp-receipt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--teal);
+  background: var(--teal-soft);
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.imp-receipt button {
+  margin-left: auto;
+}
+
+/* 撤销后的那句话：跟回执同一块，但淡一档，免得看成本次导入的结果 */
+.imp-undone {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.imp-tabs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.imp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.imp-tab:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.imp-tab.on {
+  color: var(--card);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.imp-tab.off {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.imp-drop-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.imp-source {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 12px;
+  background: var(--paper-deep);
+}
+
+.imp-paste {
+  width: 100%;
+  font-family: var(--font-serif);
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.imp-paste:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.imp-tip {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.imp-notes {
+  margin-top: 10px;
+  max-height: 230px;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+
+.imp-notes .obs-item {
+  width: 100%;
+}
+
+.imp-summary {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 12px 0 8px;
+}
+
+.imp-summary b {
+  color: var(--ink);
+}
+
+.imp-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 268px;
+  gap: 14px;
+}
+
+.imp-preview {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.imp-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.imp-preview-head b {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.imp-rows {
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.imp-row-wrap {
+  margin-bottom: 4px;
+}
+
+.imp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 6px;
+  background: var(--card);
+}
+
+.imp-row:hover {
+  border-color: var(--muted);
+}
+
+.imp-row:active {
+  opacity: 0.7;
+}
+
+.imp-grip {
+  color: var(--muted);
+  font-size: 11px;
+  cursor: grab;
+  user-select: none;
+}
+
+.imp-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 2px 0;
+}
+
+.imp-name:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.imp-words {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.imp-act {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0 5px;
+  cursor: pointer;
+}
+
+.imp-act:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.imp-act:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.imp-sum {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.7;
+  padding: 2px 0 0 22px;
+}
+
+.imp-more {
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 6px 8px;
+}
+
+.imp-target {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.imp-target-head {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.imp-target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.imp-choice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  padding: 4px 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.imp-choice:hover {
+  background: var(--accent-soft);
+}
+
+.imp-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--muted);
+  flex: none;
+}
+
+.imp-choice.on {
+  color: var(--accent-ink);
+}
+
+.imp-choice.on .imp-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--card);
+}
+
+.imp-hint {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin: 6px 0;
+}
+
+.imp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 900px) {
+  .imp-body {
+    grid-template-columns: 1fr;
+  }
+
+  .imp-drop-hint {
+    display: none;
+  }
+}
