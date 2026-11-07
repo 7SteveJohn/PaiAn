@@ -7,7 +7,7 @@ function maskKey(k) {
 }
 
 import { promises as fs } from 'node:fs';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +31,7 @@ import {
   storeToFlat,
   versionsCountMap,
 } from './server-lib/schema.js';
+import { isNewerVersion } from './server-lib/update-check.js';
 import { applyPatches, applyPull, fingerprint, fnv, mergeForeignMeta, norm, orphanedBookRoots, parseFile, plan, renderBook } from './server-lib/obsidian.js';
 
 // 服务端用到 Object.hasOwn / ||= / structuredClone 等能力，老版本 Node 上会以
@@ -129,15 +130,36 @@ function resolveDataFile(name) {
   return file;
 }
 
-// 读盘异常先记下来，随首个响应带给界面（同一文件只报一次，不刷屏）
+// 读盘异常先记下来，随首个响应带给界面（同一文件只报一次，不刷屏）。
+// 自愈：同一个文件连续读成功 3 次，就把挂着的告警摘掉——同步盘占用是一次性的，
+// 告警却常驻到重启，作者会以为数据一直坏着（狼来了效应）。
 const dataWarnings = [];
 const warnedFiles = new Set();
+const warnMsgByFile = new Map();
+const readStreak = new Map();
 
 function noteDataProblem(name, msg) {
   if (warnedFiles.has(name)) return; // 同一进程只报一次，免得每个请求刷一条
   warnedFiles.add(name);
+  warnMsgByFile.set(name, msg);
+  readStreak.set(name, 0);
   console.error('数据异常：' + msg);
   dataWarnings.push(msg);
+}
+
+function noteReadOkay(name) {
+  if (!warnMsgByFile.has(name)) return;
+  const n = (readStreak.get(name) ?? 0) + 1;
+  readStreak.set(name, n);
+  if (n >= 3) {
+    const msg = warnMsgByFile.get(name);
+    const i = dataWarnings.indexOf(msg);
+    if (i >= 0) dataWarnings.splice(i, 1);
+    warnedFiles.delete(name);
+    warnMsgByFile.delete(name);
+    readStreak.delete(name);
+    console.log(`数据恢复：${name} 连续读取正常，已撤掉早前的告警`);
+  }
 }
 
 async function readJson(name) {
@@ -146,6 +168,7 @@ async function readJson(name) {
   for (let attempt = 0; ; attempt++) {
     try {
       text = await fs.readFile(file, 'utf-8');
+      noteReadOkay(name);
       break;
     } catch (err) {
       // 文件不存在是正常初始状态（新数据目录还没落过盘）
@@ -191,8 +214,27 @@ function writeJson(name, value) {
 async function writeAtomic(file, value) {
   const tmp = `${file}.${process.pid}.${++tmpSeq}.tmp`;
   try {
-    await fs.writeFile(tmp, JSON.stringify(value, null, 2), 'utf-8');
-    await fs.rename(tmp, file);
+    let text = JSON.stringify(value, null, 2);
+    // 大文件（历史快照表）转紧凑格式：体积与序列化时间双降；小文件保持缩进，手改排查友好
+    if (text.length > 512 * 1024) text = JSON.stringify(value);
+    const fh = await fs.open(tmp, 'w');
+    try {
+      await fh.writeFile(text, 'utf-8');
+      await fh.sync(); // rename 前先 fsync：掉电时 NTFS 元数据可能先于数据落盘，不 sync 的 rename 极端情况会让目标变 0 字节
+    } finally {
+      await fh.close();
+    }
+    try {
+      await fs.rename(tmp, file);
+    } catch (err) {
+      // 杀软/同步盘短暂占用改名：退一拍重试一次，仍失败才往上抛
+      if (err.code === 'EPERM' || err.code === 'EBUSY') {
+        await new Promise((r) => setTimeout(r, 80));
+        await fs.rename(tmp, file);
+      } else {
+        throw err;
+      }
+    }
   } catch (err) {
     await fs.rm(tmp, { force: true }).catch(() => {});
     throw err;
@@ -209,18 +251,27 @@ function tooLargeBody(bytes) {
 function readBody(req, limit = MAX_BODY) {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let drained = false; // 超限后转入排空模式：不再收块，等请求体走完才拒绝
     const chunks = [];
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > limit) {
-        // 分块传输没有 Content-Length 时走这里：只记账，响应交给外层统一发
+      if (size > limit && !drained) {
+        drained = true;
+        chunks.length = 0;
         const err = tooLargeBody(size);
         err.status = 413;
-        chunks.length = 0;
-        reject(err);
+        // 先排空再拒绝：响应发出时连接上没有在途数据，关连接只发 FIN 不发 RST，
+        // 客户端必能看到 413（先写后断会被 RST 把没读完的响应一起冲掉，test:api 的 413 flake 就是它）
+        const bail = () => reject(err);
+        req.resume();
+        req.on('end', bail);
+        req.on('error', bail);
+        req.on('close', () => {
+          if (!req.readableEnded) bail();
+        });
         return;
       }
-      chunks.push(chunk);
+      if (!drained) chunks.push(chunk);
     });
     req.on('end', () => {
       try {
@@ -233,6 +284,24 @@ function readBody(req, limit = MAX_BODY) {
   });
 }
 
+// 被拒的请求先排空请求体再回响应；请求体已经走完（或已断）就直接回
+function rejectAfterDrain(req, res, status, payload) {
+  const reply = () => {
+    try {
+      res.setHeader('Connection', 'close');
+      sendJson(res, status, payload);
+    } catch {
+      // 连接已死，无处可写
+    }
+  };
+  req.resume();
+  if (req.readableEnded) reply();
+  else {
+    req.on('end', reply);
+    req.on('error', reply);
+  }
+}
+
 function sendJson(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(data));
@@ -242,6 +311,8 @@ function sendJson(res, status, data) {
 
 // versions.json 可以涨到几十 MB：解析结果按 mtime 缓存在进程里。写入都经过本机服务，
 // 缓存随写更新；万一有别的进程改了文件，mtime 对不上会重新读。
+// mtime = -2 是「写入在途」哨兵：这期间缓存里挂的就是即将落盘的最新事实，
+// 并发读拿它合并写回才不会把刚合并进来的快照键盖掉（旧 mtime 会命中旧表）。
 let versionsCache = { mtime: -1, store: {} };
 async function versionsMtime() {
   try {
@@ -251,14 +322,18 @@ async function versionsMtime() {
   }
 }
 async function getVersionsStore() {
+  if (versionsCache.mtime === -2) return versionsCache.store;
   const m = await versionsMtime();
   if (m !== versionsCache.mtime) versionsCache = { mtime: m, store: sanitizeVersions(await readJson('versions.json')) };
   return versionsCache.store;
 }
 async function putVersionsStore(store) {
   const clean = sanitizeVersions(store);
+  const mine = { mtime: -2, store: clean };
+  versionsCache = mine;
   await writeJson('versions.json', clean);
-  versionsCache = { mtime: await versionsMtime(), store: clean };
+  // 缓存还是自己挂的那份才回填真实 mtime：并发写时后来者已挂上更新的内容，别覆盖它
+  if (versionsCache === mine) versionsCache = { mtime: await versionsMtime(), store: clean };
   return clean;
 }
 
@@ -502,16 +577,22 @@ async function listVaultNotes(cfg, query) {
     rels.length > VAULT_SCAN_CAP
       ? `库里匹配到 ${rels.length} 篇，只扫前 ${VAULT_SCAN_CAP} 篇（再缩小一下搜索词）`
       : '';
-  const notes = await Promise.all(
+  const st0 = await Promise.all(
     picked.map(async (rel) => {
-      const st = await fs.stat(path.join(root, rel));
-      return { path: rel, name: path.basename(rel), mtime: st.mtimeMs, bytes: st.size, wb: await isSyncArtifact(path.join(root, rel)) };
+      const st = await fs.stat(path.join(root, rel)).catch(() => null);
+      return { path: rel, name: path.basename(rel), mtime: st?.mtimeMs ?? 0, bytes: st?.size ?? 0 };
     }),
   );
+  st0.sort((a, b) => b.mtime - a.mtime);
+  // 认镜像（读文件头 8KB）只做 mtime 最新的一批：镜像刚被同步写盘、永远排在新前置里，
+  // 全量 800 篇逐篇开文件是白烧；没认的老条目本来也挤不进前 200
+  const head = st0.slice(0, 260);
+  await Promise.all(head.map(async (n) => { n.wb = await isSyncArtifact(path.join(root, n.path)); }));
+  for (const n of st0) if (n.wb === undefined) n.wb = false;
   // 工作台自己同步出去的文件是镜像，不是素材：它们刚被写盘、mtime 最新，
   // 不沉下去就会顶在列表最前面，看着像「刚写的笔记」，导入回去其实是在复制自己的导出
-  notes.sort((a, b) => Number(a.wb) - Number(b.wb) || b.mtime - a.mtime);
-  return { notes: notes.slice(0, 200), warning };
+  st0.sort((a, b) => Number(a.wb) - Number(b.wb) || b.mtime - a.mtime);
+  return { notes: st0.slice(0, 200), warning };
 }
 
 /** 读文件头几 KB 认属性区：带 wb-id 的就是我方同步产物 */
@@ -842,6 +923,8 @@ async function handleAiChat(req, res, body) {
       if (typeof body?.temperature === 'number') payload.options = { temperature: body.temperature };
       upstream = await fetch(ollamaNativeChatUrl(ai.baseUrl), {
         method: 'POST',
+        // 客户端点了停止就该真停：本地模型的算力不掐断就一直烧
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -897,6 +980,8 @@ async function handleAiChat(req, res, body) {
 }
 
 // 非流式文本通道：整段请求、整段返回（供记忆抽取等需要稳定 JSON 的结构化任务用）。
+// 上游无响应时限 120s 掐断：挂着的请求会让 UI 永远转圈（长文生成 120s 内一般够用）
+const UPSTREAM_TIMEOUT_MS = 120_000;
 async function askUpstreamText(messages, temperature) {
   const ai = await readJson('ai.json');
   if (!ai.baseUrl || !ai.model) throw Object.assign(new Error('尚未配置 AI 接口，请到「设置」完成配置'), { status: 400 });
@@ -906,6 +991,7 @@ async function askUpstreamText(messages, temperature) {
     if (proto === 'anthropic') {
       upstream = await fetch(ai.baseUrl.replace(/\/+$/, '') + '/messages', {
         method: 'POST',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         headers: anthropicHeaders(ai),
         body: JSON.stringify(toAnthropicBody(ai, messages, false, temperature)),
       });
@@ -914,6 +1000,7 @@ async function askUpstreamText(messages, temperature) {
       if (typeof temperature === 'number') payload.options = { temperature };
       upstream = await fetch(ollamaNativeChatUrl(ai.baseUrl), {
         method: 'POST',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -924,6 +1011,7 @@ async function askUpstreamText(messages, temperature) {
       if (typeof temperature === 'number') payload.temperature = temperature;
       upstream = await fetch(aiChatUrl(ai.baseUrl), {
         method: 'POST',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         headers,
         body: JSON.stringify(payload),
       });
@@ -976,11 +1064,100 @@ function localOnly(req) {
   return null;
 }
 
+// 提示词覆盖（data/prompts/<key>.md 存在就覆盖内置 system 身份句；写入空文本＝删文件恢复默认）
+const PROMPT_KEYS = ['advisor', 'advisor-judge', 'draft', 'chat'];
+
+async function readPromptOverrides() {
+  const dir = path.join(DATA_DIR, 'prompts');
+  const overrides = {};
+  for (const key of PROMPT_KEYS) {
+    const text = await fs.readFile(path.join(dir, `${key}.md`), 'utf-8').catch(() => null);
+    if (typeof text === 'string' && text.trim()) overrides[key] = text;
+  }
+  return overrides;
+}
+
+// 备份目录里的提示词覆盖：形状与 readPromptOverrides 一致，客户端恢复路径直接复用
+async function readBackupPrompts(dir) {
+  const pdir = path.join(dir, 'prompts');
+  const out = {};
+  for (const key of PROMPT_KEYS) {
+    const text = await fs.readFile(path.join(pdir, `${key}.md`), 'utf-8').catch(() => null);
+    if (typeof text === 'string' && text.trim()) out[key] = text;
+  }
+  return out;
+}
+
+// ---------- 检查更新 ----------
+// 数据源是 GitHub Releases 公开接口。隐私承诺是「不联网不上传」——所以启动自动检查
+// 默认关（app.json.checkUpdate），只有作者手动点「检查更新」或自己开了开关才发这一个请求；
+// 只读公开接口，不带任何本机数据；发现新版只提醒，下载与安装永远是作者自己的动作。
+const UPDATE_REPO = '7SteveJohn/PaiAn';
+const UPDATE_API_URL = process.env.WB_UPDATE_API || `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
+const UPDATE_TTL = 3600 * 1000; // 结果缓存 1 小时：反复点按钮也不刷接口（匿名配额 60 次/时/IP）
+let CURRENT_VERSION = '';
+try {
+  CURRENT_VERSION = String(JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version || '');
+} catch {
+  // 打包形态变化读不到版本就不报新版（宁漏勿误）
+}
+let updateState = { checkedAt: 0, current: '', latest: '', url: '', notes: '', publishedAt: '', available: false, error: '' };
+let updateInflight = null;
+
+async function checkUpdateNow(force = false) {
+  if (!CURRENT_VERSION) return { ...updateState, current: '', error: '读不到当前版本号，跳过检查' };
+  if (!force && updateState.checkedAt && Date.now() - updateState.checkedAt < UPDATE_TTL) return updateState;
+  if (updateInflight) return updateInflight;
+  updateInflight = (async () => {
+    try {
+      const res = await fetch(UPDATE_API_URL, {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'User-Agent': 'PaiAn-Workbench', Accept: 'application/vnd.github+json' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      const latest = String(j.tag_name || '').replace(/^v/i, '');
+      updateState = {
+        checkedAt: Date.now(),
+        current: CURRENT_VERSION,
+        latest,
+        url: j.html_url || `https://github.com/${UPDATE_REPO}/releases`,
+        notes: String(j.name || '').slice(0, 80),
+        publishedAt: j.published_at || '',
+        available: isNewerVersion(CURRENT_VERSION, latest),
+        error: '',
+      };
+    } catch (err) {
+      updateState = { ...updateState, checkedAt: Date.now(), error: `检查失败：${err?.message || err}` };
+    } finally {
+      updateInflight = null;
+    }
+    return updateState;
+  })();
+  return updateInflight;
+}
+
+// projects.json 的 mtime 缓存：单章快路径打字热路径专用。写入都经本服务的 writeJson
+// （rename 必然改 mtime，缓存自然失效）；别的进程改文件同样靠 mtime 对不上兜底
+let projectsCache = { mtime: -1, projects: [] };
+async function projectsMtime() {
+  try {
+    return (await fs.stat(path.join(DATA_DIR, 'projects.json'))).mtimeMs;
+  } catch {
+    return -1;
+  }
+}
+async function readProjectsCached() {
+  const m = await projectsMtime();
+  if (m !== projectsCache.mtime) projectsCache = { mtime: m, projects: await readJson('projects.json') };
+  return projectsCache.projects;
+}
+
+
 async function handleApi(req, res, pathname) {
   const gate = localOnly(req);
   if (gate) {
-    sendJson(res, gate.status, { error: gate.reason });
-    req.resume(); // 被拒的请求体也得排空，否则客户端只看见连接被掐
+    rejectAfterDrain(req, res, gate.status, { error: gate.reason });
     return;
   }
 
@@ -1068,21 +1245,37 @@ async function handleApi(req, res, pathname) {
   // 空数组表示删掉这条 key。默认 merge——整表覆盖只留给「从备份恢复」那一条路。
   // 单章正文快路径：打字场景只改一章时，就地合并进 projects.json——
   // 不动 updatedAt、不碰快照与同步状态表（那些仍由整包 /api/data 负责）。
+  // dailyDate/dailyToday：打字会话的当日字数捎带，整包通道不来时 stats.json 也不断档。
   if (req.method === 'PUT' && pathname === '/api/chapter') {
     const body = await readBody(req);
     const projectId = typeof body?.projectId === 'string' ? body.projectId : '';
     const chapterId = typeof body?.chapterId === 'string' ? body.chapterId : '';
     if (!projectId || !chapterId) return sendJson(res, 400, { error: 'projectId / chapterId 必填' });
     if (typeof body?.content !== 'string') return sendJson(res, 400, { error: 'content 必须是字符串' });
-    const projects = await readJson('projects.json');
+    // 打字场景每 800ms 一发：projects.json 走 mtime 缓存读（几 MB 的解析是大头，stat 是零头）
+    const projects = await readProjectsCached();
     const p = (Array.isArray(projects) ? projects : []).find((x) => x?.id === projectId);
     if (!p) return sendJson(res, 404, { error: '作品不存在（可能刚被删掉）' });
     const c = (p.chapters ?? []).find((x) => x?.id === chapterId);
     if (!c) return sendJson(res, 404, { error: '章不存在（可能刚被删掉）' });
-    if (c.content === body.content) return sendJson(res, 200, { ok: true, same: true });
-    c.content = body.content;
-    await writeJson('projects.json', projects);
-    return sendJson(res, 200, { ok: true });
+    const same = c.content === body.content;
+    if (!same) {
+      c.content = body.content;
+      await writeJson('projects.json', projects);
+    }
+    if (
+      typeof body?.dailyToday === 'number' &&
+      Number.isFinite(body.dailyToday) &&
+      typeof body?.dailyDate === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(body.dailyDate)
+    ) {
+      const stats = await readJson('stats.json');
+      const count = Math.max(0, Math.round(body.dailyToday));
+      if ((stats?.daily?.[body.dailyDate] ?? 0) !== count) {
+        await writeJson('stats.json', { ...stats, daily: { ...(stats?.daily ?? {}), [body.dailyDate]: count } });
+      }
+    }
+    return sendJson(res, 200, same ? { ok: true, same: true } : { ok: true });
   }
 
   if (req.method === 'PUT' && pathname === '/api/versions') {
@@ -1108,7 +1301,7 @@ async function handleApi(req, res, pathname) {
   // 范围就是「全部」：AI 对话与拆文对标也算作者资产，漏掉它们换台机器就找不回来了。
   // ai.json 里的 apiKey 刻意不带出去（备份文件常常就躺在下载目录里），恢复时原样保留本机已有的 Key。
   if (req.method === 'GET' && pathname === '/api/export') {
-    const [ideas, projectsRaw, stats, gacha, cards, chat, benchmarks, ai] = await Promise.all([
+    const [ideas, projectsRaw, stats, gacha, cards, chat, benchmarks, ai, prompts] = await Promise.all([
       readJson('ideas.json'),
       readJson('projects.json'),
       readJson('stats.json'),
@@ -1117,6 +1310,7 @@ async function handleApi(req, res, pathname) {
       readJson('chat.json'),
       readJson('benchmarks.json'),
       readJson('ai.json'),
+      readPromptOverrides(),
     ]);
     const payload = JSON.stringify({
       schema: 2,
@@ -1129,6 +1323,8 @@ async function handleApi(req, res, pathname) {
       chat: { sessions: Array.isArray(chat?.sessions) ? chat.sessions : [] },
       benchmarks: sanitizeBenchmarks(Array.isArray(benchmarks) ? benchmarks : []),
       ai: stripApiKey(ai),
+      // 提示词覆盖也是作者手写的内容：漏掉它们换台机器就要重敲一遍
+      prompts,
     });
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
@@ -1149,20 +1345,26 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req);
     const cur = await readJson('app.json');
     cur.closeToTray = body?.closeToTray !== false;
+    // 镜像目录只在明确传了字段时才动：保存「点 X 行为」不该顺手清掉它
+    if (typeof body?.mirrorDir === 'string') cur.mirrorDir = body.mirrorDir.trim();
+    // 更新检查开关：默认关——这是「不联网」承诺的一部分，开了才会在启动时访问 GitHub
+    if (typeof body?.checkUpdate === 'boolean') cur.checkUpdate = body.checkUpdate;
     await writeJson('app.json', cur);
     return sendJson(res, 200, cur);
   }
 
+  // 检查更新：GET 只回本地缓存（不发网络请求）；真正发请求的只有设置页按钮（POST，强制）与启动时开关
+  if (req.method === 'GET' && pathname === '/api/update-status') {
+    const app = await readJson('app.json');
+    return sendJson(res, 200, { ...updateState, current: CURRENT_VERSION, enabled: app.checkUpdate === true });
+  }
+  if (req.method === 'POST' && pathname === '/api/check-update') {
+    return sendJson(res, 200, await checkUpdateNow(true));
+  }
+
   // 提示词开放：data/prompts/<key>.md 存在就覆盖内置 system 身份句；写入空文本＝删文件恢复默认
-  const PROMPT_KEYS = ['advisor', 'advisor-judge', 'draft', 'chat'];
   if (req.method === 'GET' && pathname === '/api/prompts') {
-    const dir = path.join(DATA_DIR, 'prompts');
-    const overrides = {};
-    for (const key of PROMPT_KEYS) {
-      const text = await fs.readFile(path.join(dir, `${key}.md`), 'utf-8').catch(() => null);
-      if (typeof text === 'string' && text.trim()) overrides[key] = text;
-    }
-    return sendJson(res, 200, { overrides });
+    return sendJson(res, 200, { overrides: await readPromptOverrides() });
   }
 
   if (req.method === 'PUT' && pathname === '/api/prompts') {
@@ -1172,6 +1374,8 @@ async function handleApi(req, res, pathname) {
       return sendJson(res, 400, { error: '非法的提示词标识' });
     }
     const text = typeof body?.text === 'string' ? body.text : '';
+    // 提示词本该几 KB：不设上限的话一次误粘 96MB（整包上限）能把单文件写爆
+    if (text.length > 200_000) return sendJson(res, 413, { error: '提示词太长（上限 20 万字符），请精简后再保存' });
     const dir = path.join(DATA_DIR, 'prompts');
     await fs.mkdir(dir, { recursive: true });
     const file = path.join(dir, `${key}.md`);
@@ -1237,6 +1441,7 @@ async function handleApi(req, res, pathname) {
       chat: { sessions: Array.isArray(chat?.sessions) ? chat.sessions : [] },
       benchmarks: sanitizeBenchmarks(Array.isArray(benchmarks) ? benchmarks : []),
       ai: stripApiKey(ai),
+      prompts: await readBackupPrompts(dir),
     });
   }
 
@@ -1504,11 +1709,9 @@ const server = http.createServer(async (req, res) => {
   }
   try {
     if (pathname.startsWith('/api/')) {
-      // 超限的请求体先看 Content-Length 直接拒掉：等收完再拒，客户端往往只看到连接被掐
+      // 超限的请求体先看 Content-Length 直接拒掉：先排空再回，413 必达（先写后断会被 RST 冲掉）
       if (BODY_METHODS.has(req.method) && Number(req.headers['content-length']) > MAX_BODY) {
-        res.setHeader('Connection', 'close');
-        sendJson(res, 413, { error: tooLargeBody(Number(req.headers['content-length'])).message });
-        req.resume(); // 排空剩余请求体，让响应能正常送达
+        rejectAfterDrain(req, res, 413, { error: tooLargeBody(Number(req.headers['content-length'])).message });
         return;
       }
       await handleApi(req, res, pathname);
@@ -1544,8 +1747,48 @@ async function backupData() {
   // 当天已备份过就不再覆盖：保留当天首次启动时的快照，否则中途重启会把已损坏/误删的数据写进唯一备份
   if (existsSync(path.join(dir, 'projects.json'))) return;
   await fs.mkdir(dir, { recursive: true });
+  // 拷贝失败不再静默：杀软占用 / 磁盘满时用户得知道当天备份是残的，不能假装有备份
+  const failed = [];
   for (const name of Object.keys(DEFAULTS)) {
-    await fs.copyFile(path.join(DATA_DIR, name), path.join(dir, name)).catch(() => {});
+    await fs
+      .copyFile(path.join(DATA_DIR, name), path.join(dir, name))
+      .catch((err) => failed.push(`${name}（${err.code || err.message}）`));
+  }
+  // 提示词覆盖也是作者手写的内容，跟着进备份；漏了它们换机/恢复就得重敲
+  const promptsDir = path.join(DATA_DIR, 'prompts');
+  if (existsSync(promptsDir)) {
+    await fs.mkdir(path.join(dir, 'prompts'), { recursive: true }).catch(() => {});
+    for (const f of await fs.readdir(promptsDir).catch(() => [])) {
+      if (!f.endsWith('.md')) continue;
+      await fs
+        .copyFile(path.join(promptsDir, f), path.join(dir, 'prompts', f))
+        .catch((err) => failed.push(`prompts/${f}（${err.code || err.message}）`));
+    }
+  }
+  if (failed.length) console.warn(`今日备份有 ${failed.length} 个文件没拷上（可能是杀软/同步盘占用或磁盘满）：${failed.join('、')}`);
+  // 镜像目录：作者在设置里指定的第二落点（另一块盘 / 同步盘）——主目录被删或盘坏时还有一份。
+  // 只做双写冗余，恢复入口仍走主目录；镜像写不进只告警，不当失败处理
+  const settings = await readJson('app.json');
+  const mirrorRoot = typeof settings?.mirrorDir === 'string' ? settings.mirrorDir.trim() : '';
+  if (mirrorRoot) {
+    const mdir = path.join(mirrorRoot, day);
+    await fs.mkdir(mdir, { recursive: true }).catch(() => {});
+    for (const name of Object.keys(DEFAULTS)) {
+      await fs
+        .copyFile(path.join(DATA_DIR, name), path.join(mdir, name))
+        .catch((err) => failed.push(`镜像 ${name}（${err.code || err.message}）`));
+    }
+    if (existsSync(promptsDir)) {
+      await fs.mkdir(path.join(mdir, 'prompts'), { recursive: true }).catch(() => {});
+      for (const f of await fs.readdir(promptsDir).catch(() => [])) {
+        if (!f.endsWith('.md')) continue;
+        await fs
+          .copyFile(path.join(promptsDir, f), path.join(mdir, 'prompts', f))
+          .catch((err) => failed.push(`镜像 prompts/${f}（${err.code || err.message}）`));
+      }
+    }
+    if (failed.length) console.warn(`镜像备份（${mdir}）有 ${failed.length} 个文件没拷上：${failed.filter((f) => f.startsWith('镜像')).join('、')}`);
+    else console.log(`已镜像备份到 ${mdir}`);
   }
   const backupsRoot = path.join(DATA_DIR, 'backups');
   const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
@@ -1595,6 +1838,12 @@ ensureDataDir()
       console.log('  按 Ctrl+C 停止服务');
       console.log('');
     });
+    // 启动检查更新只在作者开了开关时发生（默认关，守住「不联网」承诺）；失败静默，不打扰开机
+    readJson('app.json')
+      .then((s) => {
+        if (s?.checkUpdate === true) setTimeout(() => checkUpdateNow(false).catch(() => {}), 3000);
+      })
+      .catch(() => {});
   })
   .catch((err) => {
     console.error('初始化数据目录失败:', err);
@@ -1607,4 +1856,13 @@ server.on('error', (err) => {
     process.exit(1);
   }
   console.error('服务器错误:', err);
+});
+
+// 进程级兜底：漏网的异常先留痕再继续跑——写作工具带着页面上的未落库内容，
+// 一刀切退出等于把没保存的字全烧掉；有 800ms 自动保存和每日备份兜着，宁可带病运行
+process.on('uncaughtException', (err) => {
+  console.error('未捕获异常（进程继续运行，请把这段反馈给作者）:', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('未处理的 Promise 拒绝（进程继续运行，请把这段反馈给作者）:', err);
 });

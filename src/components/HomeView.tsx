@@ -1,5 +1,4 @@
-import type { CSSProperties } from 'react';
-import { ArrowRight, Bookmark, Lightbulb, MessageSquare, NotebookPen, PanelRight, Sparkles, BarChart3 } from 'lucide-react';
+import { ArrowRight, Bookmark, NotebookPen, Sparkles } from 'lucide-react';
 import type { Idea, Project, StatsData } from '../types';
 import { localDate, projectWords } from '../util';
 
@@ -21,13 +20,16 @@ interface Props {
   ideas: Idea[];
   stats: StatsData;
   aiReady: boolean;
+  /** 有新版本时传版本号（空串=没有）：只在问候行下提一句，去不去看永远是作者的事 */
+  updateHint?: string;
   onNavigate: (v: 'ideas' | 'projects' | 'stats' | 'chat' | 'settings') => void;
   onOpenProject: (id: string) => void;
   onWizard: () => void;
 }
 
-// 工作台首页：第一屏亮出全部核心能力（对标引导式创作工具的首页）
-export default function HomeView({ projects, ideas, stats, aiReady, onNavigate, onOpenProject, onWizard }: Props) {
+// 工作台首页：像一张书桌台历，不像产品广告——问候、当日数字、继续写、最近在写的书；
+// 功能入口收成底部一行目录（杂志目录式），不再用图标卡片阵列占半屏
+export default function HomeView({ projects, ideas, stats, aiReady, updateHint, onNavigate, onOpenProject, onWizard }: Props) {
   const hour = new Date().getHours();
   const greet = hour < 6 ? '夜深了' : hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好';
   const today = localDate();
@@ -53,18 +55,18 @@ export default function HomeView({ projects, ideas, stats, aiReady, onNavigate, 
   const weekWords = sumDays(0);
   const prevWeekWords = sumDays(7);
 
-  const tiles = [
-    { icon: NotebookPen, c: '#bc3f2c', n: projects.length, label: '创作项目', v: 'ideas' as const, nav: 'projects' as const },
-    { icon: Bookmark, c: '#8a6a1f', n: ideas.length, label: '灵感库存', nav: 'ideas' as const },
-    { icon: BarChart3, c: '#4a7a43', n: total, label: '累计产出字', nav: 'stats' as const },
-    { icon: PanelRight, c: '#33565e', n: openForeshadows, label: '待回收伏笔', nav: 'projects' as const },
+  const figures = [
+    { n: projects.length, label: '在写的书', nav: 'projects' as const },
+    { n: ideas.length, label: '灵感库存', nav: 'ideas' as const },
+    { n: total, label: '累计产出字', nav: 'stats' as const },
+    { n: openForeshadows, label: '待回收伏笔', nav: 'projects' as const },
   ];
 
-  const entries = [
-    { icon: Sparkles, c: '#bc3f2c', title: 'AI 引导创建', desc: '一句话灵感，AI 生成设定、主角、大纲三选一', act: onWizard, cta: '开始引导' },
-    { icon: MessageSquare, c: '#33565e', title: 'AI 对话', desc: '和模型自由聊选题、聊结构，规则自动生效', act: () => onNavigate('chat'), cta: '去对话' },
-    { icon: Lightbulb, c: '#8a6a1f', title: '灵感速记', desc: '想法、摘抄、伏笔随手记，可一键转为项目', act: () => onNavigate('ideas'), cta: '去记录' },
-    { icon: BarChart3, c: '#4a7a43', title: '统计复盘', desc: '热力图、关键词、伏笔总览，看见自己的产出', act: () => onNavigate('stats'), cta: '去复盘' },
+  const links = [
+    { title: 'AI 引导创建', act: onWizard },
+    { title: 'AI 对话', act: () => onNavigate('chat') },
+    { title: '灵感速记', act: () => onNavigate('ideas') },
+    { title: '统计复盘', act: () => onNavigate('stats') },
   ];
 
   return (
@@ -76,6 +78,11 @@ export default function HomeView({ projects, ideas, stats, aiReady, onNavigate, 
           今日已产出 <b>{todayWords}</b> 字 · 连续创作 <b>{streak}</b> 天 · 正文现存 <b>{draftsWords}</b> 字
           {' '}· 本周 <b>{weekWords}</b> 字（上周 {prevWeekWords}）
           {!aiReady && <span className="home-ai-hint"> · AI 尚未配置，去「设置」点亮全部能力</span>}
+          {updateHint && (
+            <button className="home-update" onClick={() => onNavigate('settings')} title="去设置页看发布说明与下载地址">
+              新版本 v{updateHint} 已发布 · 去看看 →
+            </button>
+          )}
         </p>
         <hr className="head-rule" />
       </header>
@@ -91,60 +98,46 @@ export default function HomeView({ projects, ideas, stats, aiReady, onNavigate, 
         </button>
       )}
 
-      <div className="tile-row">
-        {tiles.map(({ icon: Icon, c, n, label, nav }) => (
-          <button key={label} className="stat-tile" onClick={() => onNavigate(nav)}>
-            <span className="tile-icon" style={{ '--c': c } as CSSProperties}>
-              <Icon size={17} />
-            </span>
-            <span className="tile-num">{n}</span>
-            <span className="tile-label">{label}</span>
+      <div className="home-figures">
+        {figures.map(({ n, label, nav }) => (
+          <button key={label} className="figure" onClick={() => onNavigate(nav)}>
+            <span className="figure-num">{n}</span>
+            <span className="figure-label">{label}</span>
           </button>
         ))}
       </div>
 
-      <div className="home-grid">
-        <section className="home-col">
-          <h3 className="sec-title">
-            <NotebookPen size={14} /> 最近项目
-          </h3>
-          {recent.length === 0 && (
-            <div className="home-empty">
-              <p>还没有项目。让 AI 帮你完成冷启动，或手动新建一篇。</p>
-              <button className="btn primary" onClick={onWizard}>
-                <Sparkles size={14} /> AI 引导创建
-              </button>
-            </div>
-          )}
-          {recent.map((p) => (
-            <button key={p.id} className="home-proj" onClick={() => onOpenProject(p.id)}>
-              <span className="proj-title">{p.title || '未命名'}</span>
-              <span className="home-proj-meta">
-                {p.status} · {projectWords(p)} 字
-              </span>
-              <ArrowRight size={14} />
+      <section className="home-col home-recent">
+        <h3 className="sec-title">
+          <NotebookPen size={14} /> 最近项目
+        </h3>
+        {recent.length === 0 && (
+          <div className="home-empty">
+            <p>还没有项目。让 AI 帮你完成冷启动，或手动新建一篇。</p>
+            <button className="btn primary" onClick={onWizard}>
+              <Sparkles size={14} /> AI 引导创建
             </button>
-          ))}
-        </section>
+          </div>
+        )}
+        {recent.map((p) => (
+          <button key={p.id} className="home-proj" onClick={() => onOpenProject(p.id)}>
+            <span className="proj-title">{p.title || '未命名'}</span>
+            <span className="home-proj-meta">
+              {p.status} · {projectWords(p)} 字
+            </span>
+            <ArrowRight size={14} />
+          </button>
+        ))}
+      </section>
 
-        <section className="home-col">
-          <h3 className="sec-title">
-            <Sparkles size={14} /> 能力入口
-          </h3>
-          {entries.map(({ icon: Icon, c, title, desc, act, cta }) => (
-            <button key={title} className="feature-card" onClick={act}>
-              <span className="tile-icon" style={{ '--c': c } as CSSProperties}>
-                <Icon size={16} />
-              </span>
-              <span className="feature-main">
-                <b>{title}</b>
-                <span>{desc}</span>
-              </span>
-              <span className="feature-cta">{cta}</span>
-            </button>
-          ))}
-        </section>
-      </div>
+      <footer className="home-links">
+        <span className="home-links-label">常用</span>
+        {links.map(({ title, act }) => (
+          <button key={title} onClick={act}>
+            {title}
+          </button>
+        ))}
+      </footer>
     </>
   );
 }

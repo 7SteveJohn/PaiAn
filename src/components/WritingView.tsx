@@ -29,16 +29,19 @@ import {
   BookOpen,
   RefreshCw,
   ShieldAlert,
-  FileDown,
   FileUp,
+  Timer,
+  Search,
 } from 'lucide-react';
 import { buildDocx, buildEpub, type ExportChapter } from '../export-doc';
 import { parseWordList, loadWordText, saveWordText, scanChapters } from '../sensitive';
+import { findTics } from '../tics';
+import { checkSubmission, chapterDiagnosis } from '../submit-rules';
+import { loadActiveSprint, saveActiveSprint, sprintLeftMs, settleSprint, fmtClock, SPRINT_CHOICES, type ActiveSprint } from '../sprint';
 import { decodeBytes } from '../import-text';
-import { marked } from 'marked';
-// 仅类型引用：写成值引用会把整个 CodeMirror 拖回首屏包（见下方懒加载的 CodeEditor）
+// marked 只在预览模式用：预览开启时动态 import，不占首屏包
 import type { EditorView } from '@codemirror/view';
-import type { AIPublic, Chapter, Idea, MarkType, ObsidianConfig, Project, ProjectStatus, ProjectVersion } from '../types';
+import type { AIPublic, Chapter, Idea, MarkType, ObsidianConfig, Project, ProjectStatus, ProjectVersion, SprintRecord } from '../types';
 import { buildAiContext, buildFullText, countWords, rulesSuffix, uid } from '../util';
 import { EFFECT_LABEL, activePool, combineCards, dropFromHand, litCheck, playCard, progress, resolveCard, type GachaCard, type GachaState, type UserCards } from '../gacha';
 import { summarizeDeslop, type DeslopReport } from '../deslop';
@@ -53,7 +56,6 @@ import { streamChat, type ChatMessage, type UsageInfo } from '../api';
 import { AI_ACTIONS, buildMessages, buildDraftMessages,
   buildRunContext, isJudged, type AiAction, type AiContext, type PromptOverrides } from '../ai-prompt';
 import { buildEcho, echoTop, renderEcho } from '../echo';
-// CodeMirror 约占产物 519KB，只在真正进入写作时加载，首页/统计页不必为此付费
 // CodeMirror 约占产物 519KB，只在真正进入写作时加载，首页/统计页不必为此付费。
 // 进了写作页之后，空闲时把其余几个大页面（牵线/复盘/场景）的包也悄悄拉回来：
 // 首次点「场景 / 牵线 / 复盘」的那下「载入中…」一闪，正是「像网页」的来源。
@@ -164,6 +166,8 @@ interface Props {
   onOpenGacha: () => void;
   onAddRule: (rule: { name: string; content: string }) => string; // 返回一句回执（如顶掉了哪条早期规则）
   todayWords: number;
+  /** 冲刺成绩入账（App 层写进 stats.sprints 随自动保存落盘） */
+  onSprint: (rec: SprintRecord) => void;
   /** 同步的显示与入口；计时与待判定状态住在 App 层（useObsidianSync），切页不丢 */
   obsSync: ObsidianSyncState;
   /** data/prompts/*.md 的提示词覆盖（可选；写作顾问与草稿的 system 身份句可被替换） */
@@ -187,6 +191,129 @@ interface AiRunState {
 }
 
 
+/** 防抖取值：手牌达成率 / 组合任务的全章扫描用——账本写入本来就有防抖，求值也等一等再跑 */
+function useDebouncedValue<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
+/** 冲刺计时器：走针状态独立成小组件，每秒只重渲染自己，不惊动整棵写作页 */
+function SprintTimer({ todayWords, onRecord }: { todayWords: number; onRecord: (rec: SprintRecord) => void }) {
+  const [open, setOpen] = useState(false);
+  // 初始化就滤掉已到点的旧冲刺：它们由下面的补结算 effect 落账，不该再进走针
+  const [active, setActive] = useState<ActiveSprint | null>(() => {
+    const s = loadActiveSprint();
+    return s && sprintLeftMs(s) > 0 ? s : null;
+  });
+  const [left, setLeft] = useState(() => (active ? sprintLeftMs(active) : 0));
+  const [note, setNote] = useState('');
+  const wordsRef = useRef(todayWords);
+  wordsRef.current = todayWords;
+
+  // 跨会话补结算：上次会话冲刺到一半关了应用，回来先把那笔成绩记上。
+  // StrictMode 下 effect 会跑两遍——第一遍记完就清掉 localStorage，第二遍读到 null 自然跳过
+  useEffect(() => {
+    const s = loadActiveSprint();
+    if (!s || sprintLeftMs(s) > 0) return;
+    const rec = settleSprint(s, wordsRef.current);
+    onRecord(rec);
+    saveActiveSprint(null);
+    setNote(`上次冲刺跨了会话，已补记：${rec.minutes} 分钟 +${rec.words} 字`);
+    // 只在挂载时跑一次
+  }, []);
+
+  // 走针：只有活动冲刺在身上时每 500ms 醒一次
+  useEffect(() => {
+    if (!active) return;
+    const tick = () => {
+      const ms = sprintLeftMs(active);
+      setLeft(ms);
+      if (ms <= 0) {
+        const rec = settleSprint(active, wordsRef.current);
+        onRecord(rec);
+        saveActiveSprint(null);
+        setActive(null);
+        setNote(`时间到！本次 ${rec.minutes} 分钟 +${rec.words} 字，已记入统计。`);
+      }
+    };
+    tick();
+    const t = window.setInterval(tick, 500);
+    return () => window.clearInterval(t);
+  }, [active, onRecord]);
+
+  const start = (minutes: number) => {
+    const s: ActiveSprint = { start: Date.now(), minutes, baseWords: wordsRef.current };
+    saveActiveSprint(s);
+    setActive(s);
+    setNote('');
+  };
+  const finishEarly = () => {
+    if (!active) return;
+    const rec = settleSprint(active, wordsRef.current);
+    onRecord(rec);
+    saveActiveSprint(null);
+    setActive(null);
+    setNote(`提前收工：${rec.minutes} 分钟 +${rec.words} 字，已记入统计。`);
+  };
+  const abandon = () => {
+    saveActiveSprint(null);
+    setActive(null);
+    setNote('这趟冲刺没有记录。');
+  };
+
+  return (
+    <>
+      <button
+        className={'mini-btn' + (active || open ? ' on' : '')}
+        onClick={() => setOpen((v) => !v)}
+        title="码字冲刺：定一段时间只管往下写，到点自动结算净增字数进统计；换视图 / 重启不丢表"
+      >
+        <Timer size={13} /> {active ? fmtClock(left) : '冲刺'}
+      </button>
+      {open && (
+        <div className="check-panel sprint-panel">
+          <div className="check-head">
+            <b>码字冲刺</b>
+            <button className="icon-btn" onClick={() => setOpen(false)} title="收起">
+              <X size={13} />
+            </button>
+          </div>
+          {!active ? (
+            <>
+              <p className="hint">选一段不受打扰的时间，只管往下写；到点结算净增字数（删改回扣），成绩进统计页。</p>
+              <div className="sprint-choices">
+                {SPRINT_CHOICES.map((m) => (
+                  <button key={m} className="mini-btn" onClick={() => start(m)}>
+                    {m} 分钟
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="sprint-clock">{fmtClock(left)}</p>
+              <p className="hint">还剩约 {Math.max(1, Math.ceil(left / 60000))} 分钟。写就完了，别的都等铃响。</p>
+              <div className="sprint-choices">
+                <button className="mini-btn" onClick={finishEarly}>
+                  提前结束（记录）
+                </button>
+                <button className="mini-btn" onClick={abandon}>
+                  放弃（不记录）
+                </button>
+              </div>
+            </>
+          )}
+          {note && <p className="hint">{note}</p>}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function WritingView({
   project,
   ideas,
@@ -209,6 +336,7 @@ export default function WritingView({
   onOpenGacha,
   onAddRule,
   todayWords,
+  onSprint,
   obsSync,
   promptOverrides,
   ghostEnabled,
@@ -217,8 +345,12 @@ export default function WritingView({
   const chapters = project.chapters ?? [];
 
   const [foldedVols, setFoldedVols] = useState<Set<string>>(new Set());
+  // 书的属性（状态/截稿/备注…）默认收起：写作页的主角是正文，属性是偶尔才碰的东西
+  const [metaOpen, setMetaOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sel, setSel] = useState({ start: 0, end: 0 });
+  // 上次选区位置：编辑器 selectionSet（含打字后光标原位）也回调，位置没变就不重发
+  const selPosRef = useRef({ from: -1, to: -1 });
   const [ai, setAi] = useState<AiRunState | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [diffFor, setDiffFor] = useState<ProjectVersion | null>(null);
@@ -226,6 +358,11 @@ export default function WritingView({
   // 章节模式下的书名行内编辑：null = 不在编辑（书名在标题栏左侧，点一下才变输入框）
   const [bookEdit, setBookEdit] = useState<string | null>(null);
   const [previewOn, setPreviewOn] = useState(false);
+  // 预览是低频功能：marked 按需动态 import，不占首屏包
+  const [markedLib, setMarkedLib] = useState<typeof import('marked') | null>(null);
+  useEffect(() => {
+    if (previewOn) void import('marked').then((m) => setMarkedLib(m));
+  }, [previewOn]);
   const [focusOn, setFocusOn] = useState(false);
   const [gachaOn, setGachaOn] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -239,8 +376,9 @@ export default function WritingView({
   const [flavorOn, setFlavorOn] = useState(() => localStorage.getItem('ww-flavor') !== 'off');
   const [flavor, setFlavor] = useState<DeslopReport | null>(null);
   const [flavorOpen, setFlavorOpen] = useState(false);
-  // 投稿体检：词库由作者贴（各平台雷区词不同，存在本机），扫描纯本地
+  // 体检面板：三个页签共用一次「参扫内容」的计算——敏感词 / 平台惯例 / 口头禅
   const [checkOpen, setCheckOpen] = useState(false);
+  const [checkTab, setCheckTab] = useState<'words' | 'rules' | 'tics' | 'now'>('words');
   const [wordText, setWordText] = useState(() => loadWordText());
   const wordFileRef = useRef<HTMLInputElement>(null);
   const [checkMsg, setCheckMsg] = useState('');
@@ -327,17 +465,47 @@ export default function WritingView({
   const chapter = chapters.find((c) => c.id === activeId) ?? null;
   const doc = isChapter ? (chapter?.content ?? '') : project.draft;
   // 换章就把「挂在正文偏移量上」的东西全清掉：选区（替换所选 / 标记 / 冻结 / 续写上下文都按它算）、
-  // 打开体检面板才扫：全章节 × 全词库，不打开就不付这个钱
-  const sensitiveScan = useMemo(
-    () =>
-      checkOpen
-        ? scanChapters(
-            chapters.length ? chapters.map((c) => ({ id: c.id, title: c.title, content: c.content ?? "" })) : [{ id: "draft", title: project.title || "全文", content: doc }],
-            sensitiveWords,
-          )
-        : null,
-    [checkOpen, chapters, doc, project.title, sensitiveWords],
+  // 打开体检面板才扫：全章节 × 全词库，不打开就不付这个钱。
+  // 参扫内容三个页签共用：章节模式扫全部章，单篇模式扫整篇草稿
+  const scanInputs = useMemo(
+    () => (chapters.length ? chapters.map((c) => ({ id: c.id, title: c.title, content: c.content ?? '' })) : [{ id: 'draft', title: project.title || '全文', content: doc }]),
+    [chapters, doc, project.title],
   );
+  const sensitiveScan = useMemo(() => (checkOpen ? scanChapters(scanInputs, sensitiveWords) : null), [checkOpen, scanInputs, sensitiveWords]);
+  // 平台惯例预检：章长 / 长段 / 对白占比，纯本地
+  const rulesScan = useMemo(() => (checkOpen && checkTab === 'rules' ? checkSubmission(scanInputs) : null), [checkOpen, checkTab, scanInputs]);
+  // 口头禅雷达：全书高频重复片段，纯本地；只算当前页签，别为不看的页签付扫描钱
+  const ticsScan = useMemo(() => (checkOpen && checkTab === 'tics' ? findTics(scanInputs) : null), [checkOpen, checkTab, scanInputs]);
+  // 本章诊断：本地各路体检聚成一页；300ms 防抖，开着面板打字也不逐键全扫
+  const diagDoc = useDebouncedValue(doc, 300);
+  const nowScan = useMemo(() => {
+    if (!(checkOpen && checkTab === 'now')) return null;
+    const cid = isChapter ? activeId ?? 'draft' : 'draft';
+    const title = isChapter ? chapter?.title ?? '本章' : project.title || '全文';
+    const forbiddenHits = (project.game?.forbidden ?? [])
+      .map((w) => {
+        let count = 0;
+        let at = -1;
+        let i = diagDoc.indexOf(w);
+        while (i >= 0) {
+          if (at < 0) at = i;
+          count += 1;
+          i = diagDoc.indexOf(w, i + w.length);
+        }
+        return { word: w, count, at };
+      })
+      .filter((x) => x.count > 0);
+    return chapterDiagnosis({
+      id: cid,
+      title,
+      content: diagDoc,
+      deslopCount: summarizeDeslop(diagDoc).hits.length,
+      forbiddenHits,
+      sensitiveHits: (sensitiveScan?.hits ?? []).filter((h) => h.chapterId === cid).map((h) => ({ word: h.word, count: h.count, at: h.at })),
+      openForeshadow: (project.marks ?? []).filter((m) => (isChapter ? m.chapterId === activeId : !m.chapterId) && m.type === '伏笔' && m.status !== '回收').length,
+      orphanedMarks: (project.marks ?? []).filter((m) => m.orphaned).length,
+    });
+  }, [checkOpen, checkTab, diagDoc, isChapter, activeId, chapter?.title, project.title, project.game?.forbidden, project.marks, sensitiveScan]);
   // 浮动菜单、版本对比。不清的话上一章选的范围会套到新章上，「替换所选」直接改烂新章的正文。
   useEffect(() => {
     setSel({ start: 0, end: 0 });
@@ -380,7 +548,10 @@ export default function WritingView({
     [ai?.running, ai?.text],
   );
 
-  const marks = (project.marks ?? []).filter((m) => (isChapter ? m.chapterId === activeId : !m.chapterId));
+  const marks = useMemo(
+    () => (project.marks ?? []).filter((m) => (isChapter ? m.chapterId === activeId : !m.chapterId)),
+    [project.marks, isChapter, activeId],
+  );
   const forbidden = project.game?.forbidden ?? [];
   const allMarks = project.marks ?? [];
   const openForeshadows = allMarks.filter((m) => m.type === '伏笔' && m.status !== '回收').length;
@@ -608,15 +779,17 @@ export default function WritingView({
   gachaRef.current = gacha;
   const [handMsg, setHandMsg] = useState('');
 
-  // 打过但还没达成的卡：从 applied/lit 推导，重开这本书也照样提醒，并实时算达成率
+  // 打过但还没达成的卡：从 applied/lit 推导，重开这本书也照样提醒，并实时算达成率。
+  // progress 会对整章做约束扫描，防抖 300ms：打字期间不扫，停手再刷新。
+  const evalDoc = useDebouncedValue(doc, 300);
   const ongoing = useMemo(() => {
     const open = Object.entries(gacha.applied ?? {})
       .filter(([id]) => !gacha.lit[id] && pool.some((c) => c.id === id))
       .map(([id, at]) => ({ card: pool.find((c) => c.id === id)!, at }))
       .sort((a, b) => (a.at < b.at ? 1 : -1))
       .slice(0, 3);
-    return open.map((o) => ({ ...o, report: progress(o.card, doc) }));
-  }, [gacha.applied, gacha.lit, pool, doc]);
+    return open.map((o) => ({ ...o, report: progress(o.card, evalDoc) }));
+  }, [gacha.applied, gacha.lit, pool, evalDoc]);
 
   // 写到位的那一刻自动点亮（防抖，避免每键都改账本）
   useEffect(() => {
@@ -636,7 +809,7 @@ export default function WritingView({
 
   // 两张在手卡并成一个本章任务：不消耗卡、不给抽，达成才白送一次奖励抽
   const combo = project.combo ?? null;
-  const comboReport = useMemo(() => (combo && !combo.litAt ? evaluate(doc, combo.constraints) : null), [combo, doc]);
+  const comboReport = useMemo(() => (combo && !combo.litAt ? evaluate(evalDoc, combo.constraints) : null), [combo, evalDoc]);
 
   // 合成两卡改成自己挑：手牌三张时「最左两张」经常不是想要的组合
   const [comboPick, setComboPick] = useState<string[]>([]);
@@ -706,7 +879,8 @@ export default function WritingView({
     }
   };
 
-  const linked = ideas.filter((i) => project.linkedIdeaIds.includes(i.id));  const unlinked = ideas.filter((i) => !project.linkedIdeaIds.includes(i.id));
+  const linked = ideas.filter((i) => project.linkedIdeaIds.includes(i.id));
+  const unlinked = ideas.filter((i) => !project.linkedIdeaIds.includes(i.id));
   const linkIdea = (id: string) => onUpdate(project.id, { linkedIdeaIds: [...project.linkedIdeaIds, id] });
   const unlinkIdea = (id: string) => onUpdate(project.id, { linkedIdeaIds: project.linkedIdeaIds.filter((x) => x !== id) });
 
@@ -919,6 +1093,7 @@ export default function WritingView({
           <Trash2 size={16} />
         </button>
       </header>
+      {metaOpen ? (
       <div className="writer-meta">
         <label className="meta-field">
           状态
@@ -962,25 +1137,39 @@ export default function WritingView({
             placeholder="选题理由、风格要求、素材线索…"
           />
         </label>
+        <button className="mini-btn" onClick={() => setMetaOpen(false)} title="收起，正文回到主角位">
+          收起
+        </button>
         {freezeAt != null && (
           <span className="frozen-badge">
             <Lock size={11} /> 冻结中 · 第 {freezeAt} 字之前只读
           </span>
         )}
       </div>
+      ) : (
+        <button
+          className="writer-meta-brief"
+          onClick={() => setMetaOpen(true)}
+          title="展开：状态 / 类型 / 截稿 / 目标字数 / 备注"
+        >
+          {[
+            project.status,
+            project.type,
+            project.deadline ? '截稿 ' + project.deadline.slice(5) : '',
+            project.target ? '目标 ' + (project.target >= 10000 ? (project.target / 10000).toFixed(project.target % 10000 === 0 ? 0 : 1) + ' 万字' : project.target + ' 字') : '',
+            freezeAt != null ? '冻结中' : '',
+          ]
+            .filter(Boolean)
+            .join(' · ') || '书的信息'}
+          {project.notes && <span className="brief-notes"> · {project.notes}</span>}
+        </button>
+      )}
 
+      {(hand.length > 0 || combo) && (
       <div className="hand-strip">
         <span className="hs-label">
           <Dices size={13} /> 在手
         </span>
-        {hand.length === 0 && (
-          <span className="hs-empty">
-            没有手牌。
-            <button className="mini-btn" onClick={onOpenGacha}>
-              去卡池抽一张
-            </button>
-          </span>
-        )}
         {hand.map((c) => (
           <span
             key={c.id}
@@ -1050,6 +1239,7 @@ export default function WritingView({
         ))}
         {handMsg && <span className="hs-msg">{handMsg}</span>}
       </div>
+      )}
 
       <div className={'writer' + (mode === 'review' || mode === 'graph' || mode === 'scenes' ? ' review-mode' : '')}>
         {isChapter && (mode === 'write' || mode === 'scenes') && (
@@ -1201,10 +1391,14 @@ export default function WritingView({
             <>
               <div className="paper">
                 {previewOn ? (
-                  <div
-                    className="md-body preview"
-                    dangerouslySetInnerHTML={{ __html: marked.parse(doc || '*（正文为空）*') as string }}
-                  />
+                  markedLib ? (
+                    <div
+                      className="md-body preview"
+                      dangerouslySetInnerHTML={{ __html: markedLib.marked.parse(doc || '*（正文为空）*') as string }}
+                    />
+                  ) : (
+                    <div className="view-loading">预览载入中…</div>
+                  )
                 ) : (
                   <Suspense fallback={<div className="editor-loading">编辑器加载中…</div>}>
                     <CodeEditor
@@ -1219,7 +1413,11 @@ export default function WritingView({
                       ghostEnabled={ghostEnabled}
                       onChange={(v) => patchDoc(v)}
                       onSelectionChange={(from, to, view) => {
-                        setSel({ start: from, end: to });
+                        // 光标没动（打字后的 selectionSet、原地按键）就不重发选区：省一次整树重渲染
+                        if (selPosRef.current.from !== from || selPosRef.current.to !== to) {
+                          selPosRef.current = { from, to };
+                          setSel({ start: from, end: to });
+                        }
                         cursorRef.current = from;
                         if (to > from) {
                           const coords = view.coordsAtPos(from);
@@ -1241,6 +1439,17 @@ export default function WritingView({
                             {t}
                           </button>
                         ))}
+                        <span className="sel-menu-sep" />
+                        <button
+                          title="打开浏览器搜一搜这段（查典 / 查设定用）"
+                          onClick={() => {
+                            const q = doc.slice(sel.start, sel.end).trim().slice(0, 60);
+                            if (q) window.open(`https://www.baidu.com/s?wd=${encodeURIComponent(q)}`, '_blank');
+                            setSelMenu(null);
+                          }}
+                        >
+                          <Search size={11} /> 查一查
+                        </button>
                         <button className="sel-menu-close" title="关闭" onClick={() => setSelMenu(null)}>
                           <X size={11} />
                         </button>
@@ -1292,56 +1501,60 @@ export default function WritingView({
                   >
                     <Copy size={13} /> 复制全文
                   </button>
-                  <button className="mini-btn" onClick={() => downloadFull(false)} title="下载为 .md 文件（含卷/章标题）">
-                    <Download size={13} /> 导出 .md
-                  </button>
-                  <button className="mini-btn" onClick={() => downloadFull(false, 'txt')} title="下载为 .txt 分章版，适合投稿或手机阅读">
-                    <Download size={13} /> 导出 .txt
-                  </button>
-                  {isChapter && volumeSlices.length > 1 && (
-                    <>
-                      <button
-                        className="mini-btn"
-                        onClick={() => downloadByVolume('md')}
-                        title={`按卷拆成 ${volumeSlices.length} 个 .md 文件：${volumeSlices.map((s) => displayVolumeName(s.volume)).join('、')}`}
-                      >
-                        <Download size={13} /> 分卷 .md
-                      </button>
-                      <button
-                        className="mini-btn"
-                        onClick={() => downloadByVolume('txt')}
-                        title={`按卷拆成 ${volumeSlices.length} 个 .txt 文件：${volumeSlices.map((s) => displayVolumeName(s.volume)).join('、')}（Windows 换行）`}
-                      >
-                        <Download size={13} /> 分卷 .txt
-                      </button>
-                    </>
-                  )}
-                  <button className="mini-btn" onClick={() => void downloadBook("docx")} title="导出 Word（.docx），交编辑或自己排版用">
-                    <FileDown size={13} /> .docx
-                  </button>
-                  <button className="mini-btn" onClick={() => void downloadBook("epub")} title="导出 EPUB（.epub），手机 / 阅读器直接打开">
-                    <FileDown size={13} /> .epub
-                  </button>
-                  <span>自动保存已开启</span>
+                  <details className="export-menu">
+                    <summary className="mini-btn" title="导出全文：md / txt / 分卷 / docx / epub">
+                      <Download size={13} /> 导出
+                    </summary>
+                    <div className="export-list">
+                      <button onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); void downloadFull(false); }}>导出 .md</button>
+                      <button onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); void downloadFull(false, 'txt'); }}>导出 .txt</button>
+                      {isChapter && volumeSlices.length > 1 && (
+                        <>
+                          <button onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); void downloadByVolume('md'); }} title={`按卷拆成 ${volumeSlices.length} 个 .md 文件：${volumeSlices.map((s) => displayVolumeName(s.volume)).join('、')}`}>分卷 .md</button>
+                          <button onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); void downloadByVolume('txt'); }} title={`按卷拆成 ${volumeSlices.length} 个 .txt 文件：${volumeSlices.map((s) => displayVolumeName(s.volume)).join('、')}（Windows 换行）`}>分卷 .txt</button>
+                        </>
+                      )}
+                      <button onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); void downloadBook('docx'); }}>.docx（Word）</button>
+                      <button onClick={(e) => { e.currentTarget.closest('details')?.removeAttribute('open'); void downloadBook('epub'); }}>.epub（阅读器）</button>
+                    </div>
+                  </details>
+                  <span className="autosave-note">自动保存已开启</span>
                   <button
                     className={"mini-btn" + (checkOpen ? " on" : "")}
                     onClick={() => setCheckOpen((v) => !v)}
-                    title="按你贴的雷区词库逐章扫描；词库存本机，扫描不联网"
+                    title="体检四页签：敏感词（自贴词库逐章扫）/ 平台惯例（章长·长段·对白比）/ 口头禅 / 本章汇总；全本地，不改稿"
                   >
-                    <ShieldAlert size={13} /> 投稿体检
+                    <ShieldAlert size={13} /> 体检
                   </button>
+                  <SprintTimer todayWords={todayWords} onRecord={onSprint} />
                 </span>
               </div>
                 {checkOpen && (
                   <div className="check-panel">
                     <div className="check-head">
-                      <b>投稿体检</b>
-                      <span className="hint">把投稿平台的雷区词贴进来（换行 / 逗号分隔，存本机），逐章扫描纯本机，不改稿。</span>
+                      <b>体检</b>
+                      <span className="check-tabs">
+                        <button className={checkTab === 'words' ? 'on' : ''} onClick={() => setCheckTab('words')}>
+                          敏感词
+                        </button>
+                        <button className={checkTab === 'rules' ? 'on' : ''} onClick={() => setCheckTab('rules')}>
+                          平台惯例
+                        </button>
+                        <button className={checkTab === 'tics' ? 'on' : ''} onClick={() => setCheckTab('tics')}>
+                          口头禅
+                        </button>
+                        <button className={checkTab === 'now' ? 'on' : ''} onClick={() => setCheckTab('now')}>
+                          本章
+                        </button>
+                      </span>
                       <button className="icon-btn" onClick={() => setCheckOpen(false)} title="收起">
                         <X size={13} />
                       </button>
                     </div>
-                    <textarea
+                    {checkTab === 'words' && (
+                    <>
+                      <p className="hint">把投稿平台的雷区词贴进来（换行 / 逗号分隔，存本机），逐章扫描纯本机，不改稿。</p>
+                      <textarea
                       className="check-words"
                       rows={3}
                       value={wordText}
@@ -1377,6 +1590,84 @@ export default function WritingView({
                       />
                       {checkMsg && <span className="hint">{checkMsg}</span>}
                     </div>
+                    </>
+                    )}
+                    {checkTab === 'rules' && (
+                      <>
+                        <p className="hint">章长 / 长段 / 对白占比三条本地预检，对标网文平台的常见惯例；长段那条可以点过去看，改与不改由你。</p>
+                        <div className="check-body">
+                          {!rulesScan || rulesScan.length === 0 ? (
+                            <p className="hint">三条预检都过了：章长在常见区间、没有超长段落、对白占比正常。</p>
+                          ) : (
+                            <div className="check-list">
+                              {rulesScan.map((f, i) => (
+                                <button
+                                  key={f.chapterId + f.kind + i}
+                                  className={'check-hit check-rule' + (f.level === 'warn' ? ' rule-warn' : '')}
+                                  onClick={() => jumpTo(f.at ?? 0, f.chapterId === 'draft' ? undefined : f.chapterId)}
+                                >
+                                  <b>{f.kind}</b>
+                                  <span className="check-where">
+                                    {f.title || '未命名'} · {f.level === 'warn' ? '建议处理' : '供参考'}
+                                  </span>
+                                  <span className="rule-detail">{f.detail}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                    {checkTab === 'tics' && (
+                      <div className="check-body">
+                        <p className="hint">
+                          口头禅是你自己笔下长出来的高频片段（2–4 字组合 + 拉丁词），和固定词表的「AI 味自检」互补。这是风格事实，不是错误——改与不改由你。
+                        </p>
+                        {!ticsScan || ticsScan.length === 0 ? (
+                          <p className="hint">没扫到值得留意的重复片段——也可能是篇幅还短，上榜门槛会随篇幅自适应。</p>
+                        ) : (
+                          <>
+                            <p className="hint">
+                              全书约 {scanInputs.reduce((a, c) => a + c.content.length, 0)} 字，按出现次数排序；点一条跳到首次出现的位置。
+                            </p>
+                            <div className="check-list">
+                              {ticsScan.map((h) => (
+                                <button key={h.text} className="check-hit" onClick={() => jumpTo(h.at, h.chapterId === 'draft' ? undefined : h.chapterId)}>
+                                  <b>{h.text}</b>
+                                  <span className="check-where">
+                                    {h.title || '未命名'} × {h.count}（{h.per1k}/千字）
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {checkTab === 'now' && (
+                      <div className="check-body">
+                        <p className="hint">本章的本地体检汇总；语义层的判断（钩子留没留、台词像不像本人）去 AI 工坊用「钩子体检」「OOC 检查」。点行首跳到首处。</p>
+                        {!nowScan || nowScan.length === 0 ? (
+                          <p className="hint">本章干净：AI 味、禁用词、敏感词、伏笔、平台惯例都没有可留意的。</p>
+                        ) : (
+                          <div className="check-list">
+                            {nowScan.map((r) => (
+                              <button
+                                key={r.key}
+                                className="check-hit check-rule"
+                                onClick={() => r.at !== undefined && jumpTo(r.at, isChapter ? activeId ?? undefined : undefined)}
+                              >
+                                <b>
+                                  {r.label} × {r.n}
+                                </b>
+                                <span className="rule-detail">{r.detail}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {checkTab === 'words' && (
                     <div className="check-body">
                       {!sensitiveScan || sensitiveWords.length === 0 ? (
                         <p className="hint">词库还是空的——贴进来才会扫。</p>
@@ -1405,6 +1696,7 @@ export default function WritingView({
                         </>
                       )}
                     </div>
+                    )}
                   </div>
                 )}
 
@@ -1636,7 +1928,7 @@ export default function WritingView({
                   <div className="acts-label game">
                     <Gamepad2 size={13} /> 游戏脚本改编（做游戏用）
                   </div>
-                  <p className="acts-desc">把本章正文改写成游戏可直接使用的脚本格式，输出与小说正文不同、不会插回章节。</p>
+                  <p className="acts-desc">输出游戏用脚本，不会插回章节。</p>
                   <div className="ai-actions game-acts">
                     {AI_ACTIONS.filter((a) => a.game).map((a) => (
                       <button
@@ -1652,7 +1944,7 @@ export default function WritingView({
                     ))}
                   </div>
                 </div>
-                <div className="sel-hint">{sel.end - sel.start > 0 ? `已选中 ${sel.end - sel.start} 字` : '未选中文字（分析类动作需先选中）'}</div>
+                {sel.end - sel.start > 0 && <div className="sel-hint">已选中 {sel.end - sel.start} 字</div>}
 
                 {ai && (
                   <div className="ai-result-wrap">

@@ -1,12 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import type { AppData, AIPublic, Chapter, Idea, IdeaKind, ObsidianConfig, Project, ProjectVersion, StatsData } from './types';
+import type { AppData, AIPublic, Chapter, Idea, IdeaKind, ObsidianConfig, Project, ProjectVersion, SprintRecord, StatsData } from './types';
 import { appendBeats, beatsLine, gapOf, matchOutlineRows, undoImport, type ImportOutcome, type ImportProjectLite, type ImportRequest, type ImportUndo } from './import-plan';
-import { fetchData, fetchObsidianStatus, fetchPromptOverrides, fetchVersions, purgeVaultBook, saveAIConfig, saveBenchmarks, saveChapterContent, saveChat, saveData, savePromptOverride, saveVersions, type RestoreExtras } from './api';
+import { checkUpdateNow, fetchData, fetchObsidianStatus, fetchPromptOverrides, fetchUpdateStatus, fetchVersions, purgeVaultBook, saveAIConfig, saveBenchmarks, saveChapterContent, saveChat, saveData, savePromptOverride, saveVersions, type RestoreExtras, type UpdateStatus } from './api';
 import type { PromptKey, PromptOverrides } from './ai-prompt';
 import { useObsidianSync } from './useObsidianSync';
 import { flattenVersions, mergeVersionsInto, pickVersionWrites, signatureOf, stripVersions, versionSignatures } from './versions';
 import { EMPTY_STATE, EMPTY_USER, activePool, mergeCardRule, pruneHand, type GachaState } from './gacha';
-import { countWords, localDate, localStamp, normalizeStats, parseOutlineToChapters, uid } from './util';
+import { countWords, localDate, localStamp, normalizeIdeas, normalizeStats, parseOutlineToChapters, statsEqual, uid } from './util';
 import Sidebar from './components/Sidebar';
 import IdeasView from './components/IdeasView';
 import ImportPanel from './components/ImportPanel';
@@ -130,7 +130,7 @@ export default function App() {
         const c = cards ?? EMPTY_USER;
         // 手牌可能留着已被勾掉/删掉的卡：开新局先裁一刀，别让僵尸卡占着手牌名额
         const hand = g.hand?.length ? pruneHand(g, activePool(c)) : { state: g, dropped: [] };
-        setData({ ideas, projects, stats: normalizeStats(stats), gacha: hand.state, cards: c });
+        setData({ ideas: normalizeIdeas(ideas), projects, stats: normalizeStats(stats), gacha: hand.state, cards: c });
         setAiInfo(ai);
         setDataDir(dir);
         setObsidian(obs);
@@ -163,7 +163,9 @@ export default function App() {
   useEffect(() => {
     const flush = () => {
       const st = saveStateRef.current;
-      if (st !== 'dirty' && st !== 'error') return;
+      // saving 也要冲：在途的异步请求会随页面卸载被掐，最后一批编辑只剩这里的同步 XHR。
+      // 两笔写入同源且都幂等（服务端有 stale 检测），最坏情况是回包里多一条较旧写入的告警，不丢内容。
+      if (st === 'saved') return;
       const d = dataRef.current;
       if (!d) return;
       try {
@@ -173,6 +175,19 @@ export default function App() {
         xhr.send(JSON.stringify({ ...d, projects: stripVersions(d.projects) }));
       } catch {
         // 服务端已经关了就没什么可救：当日备份还在
+      }
+      // 历史快照的增量也一并冲出去：只发整包的话，「今天首次编辑 / AI 改写前」那条回滚点就丢在内存里了
+      try {
+        const flat = flattenVersions(d.projects);
+        const { changed } = pickVersionWrites(flat, sentVersions.current, versionCounts.current, loadedVersions.current);
+        if (Object.keys(changed).length) {
+          const vx = new XMLHttpRequest();
+          vx.open('PUT', '/api/versions', false);
+          vx.setRequestHeader('Content-Type', 'application/json');
+          vx.send(JSON.stringify({ versions: changed, mode: 'merge' }));
+        }
+      } catch {
+        // 快照发不出去就留给下次自动保存；正文已经落了
       }
     };
     const onVis = () => {
@@ -186,15 +201,25 @@ export default function App() {
     };
   }, []);
 
+  // 防重入：保存中再按 Ctrl+S / 触发自动保存，不并发第二个 3MB PUT，记一笔「完成后再跑一次」
+  const persistBusy = useRef(false);
+  const persistAgain = useRef(false);
+
   const persist = useCallback(async () => {
     const d = dataRef.current;
     if (!d) return;
+    if (persistBusy.current) {
+      persistAgain.current = true;
+      return;
+    }
+    persistBusy.current = true;
     setSaveState('saving');
     try {
       // 快路径：只改了一章的正文（打字场景）时，别为 3MB 整包付网络与磁盘的账。
-      // 判据全靠引用比对：引用变了才算改过，有一点拿不准就退回整包（宁慢勿错）。
+      // 判据靠引用比对；stats 例外——打字每键字数 +1 都会换新对象引用，按值比（小对象，成本可忽略）。
+      // 有一点拿不准就退回整包（宁慢勿错）。
       const prev = lastSavedRef.current;
-      if (prev && d.projects.length === prev.projects.length && d.ideas === prev.ideas && d.stats === prev.stats && d.gacha === prev.gacha && d.cards === prev.cards) {
+      if (prev && d.projects.length === prev.projects.length && d.ideas === prev.ideas && d.gacha === prev.gacha && d.cards === prev.cards && statsEqual(d.stats, prev.stats)) {
         let changed: { pid: string; id: string; content: string } | null = null;
         let ambiguous = false;
         for (let pi = 0; pi < d.projects.length && !ambiguous; pi++) {
@@ -219,7 +244,8 @@ export default function App() {
           }
         }
         if (changed && !ambiguous) {
-          await saveChapterContent(changed.pid, changed.id, changed.content);
+          // 当日字数捎带走：整包通道不来，stats.json 就停在这次打字会话开始前的数
+          await saveChapterContent(changed.pid, changed.id, changed.content, { date: localDate(), count: d.stats.daily[localDate()] ?? 0 });
           lastSavedRef.current = { projects: d.projects, ideas: d.ideas, stats: d.stats, gacha: d.gacha, cards: d.cards };
           setSaveState('saved');
           setSaveError('');
@@ -253,6 +279,12 @@ export default function App() {
     } catch (err) {
       setSaveState('error');
       setSaveError((err as Error).message);
+    } finally {
+      persistBusy.current = false;
+      if (persistAgain.current) {
+        persistAgain.current = false;
+        void persist();
+      }
     }
   }, []);
 
@@ -337,6 +369,10 @@ export default function App() {
       });
       if (fresh) setAiInfo(fresh);
     }
+    // 提示词覆盖也是作者手写的内容：恢复路径把备份里的每一篇写回去
+    for (const [key, text] of Object.entries(extras?.prompts ?? {})) {
+      await savePromptOverride(key, text).catch((e: Error) => bad.push(`提示词 ${key}` + e.message));
+    }
   }, []);
 
   // 从备份整包恢复：先落盘再更新内存，写盘失败则保留原数据不动（快照同步覆盖）。
@@ -370,9 +406,13 @@ export default function App() {
     setData((prev) => prev && { ...prev, gacha: next });
   }, []);
 
-  // 卡牌效果「追加到规则中心」：立刻写盘并回读，之后的 AI 调用都会带上它
-  // 卡牌效果「追加到规则中心」：同名覆盖、卡牌来源最多留 6 条——
-  // 不限量会让之后每一次 AI 调用都越拖越贵。返回一句回执给写作页显示。
+  // 冲刺成绩入账：只追加，超 400 条裁掉最老的（每天几条，够记两年）
+  const recordSprint = useCallback((rec: SprintRecord) => {
+    setData((prev) => prev && { ...prev, stats: { ...prev.stats, sprints: [...(prev.stats.sprints ?? []).slice(-399), rec] } });
+  }, []);
+
+  // 卡牌效果「追加到规则中心」：立刻写盘并回读（之后的 AI 调用都会带上它）。
+  // 同名覆盖、卡牌来源最多留 6 条——不限量会让之后每一次 AI 调用都越拖越贵。返回一句回执给写作页显示。
   const addRule = useCallback(
     (r: { name: string; content: string }) => {
       if (!aiInfo) return 'AI 配置还没就绪，这条规则没写进去。';
@@ -511,6 +551,34 @@ export default function App() {
         return { ...p, chapters, marks, updatedAt: new Date().toISOString() };
       });
       return { ...prev, projects, stats };
+    });
+  }, []);
+
+  // Obsidian 同步回包的合入：同步请求是服务端按磁盘内容算的，打字后 800ms 内内存比磁盘新。
+  // 本地章节已离开「上次保存点」（引用比对）的一律保留本地，别让基于旧正文的回包把刚敲的字盖掉；
+  // 等下一轮同步（此时正文已落库）自然对齐。人物卡 / 设定卡同理，只是编辑频率低得多。
+  const applyVaultMerge = useCallback((id: string, patch: Partial<Project>) => {
+    const saved = lastSavedRef.current?.projects.find((p) => p.id === id);
+    setData((prev) => {
+      if (!prev) return prev;
+      const { chapters, characters, worldItems, ...rest } = patch;
+      const guard = <T extends { id: string }>(server: T[] | undefined, cur: T[] | undefined, was: T[] | undefined): T[] | undefined =>
+        server?.map((s) => {
+          const c = cur?.find((x) => x.id === s.id);
+          const w = was?.find((x) => x.id === s.id);
+          return c && w && c !== w ? c : s;
+        });
+      const projects = prev.projects.map((p) => {
+        if (p.id !== id) return p;
+        return {
+          ...p,
+          ...rest,
+          ...(chapters ? { chapters: guard(chapters, p.chapters, saved?.chapters) ?? chapters } : {}),
+          ...(characters ? { characters: guard(characters, p.characters, saved?.characters) ?? characters } : {}),
+          ...(worldItems ? { worldItems: guard(worldItems, p.worldItems, saved?.worldItems) ?? worldItems } : {}),
+        };
+      });
+      return { ...prev, projects };
     });
   }, []);
 
@@ -939,7 +1007,24 @@ export default function App() {
   // 写完直接切去灵感库/统计，写作页卸载了，最后一段改动也照样被推出去。
   // hook 必须在下面的 early return 之前调用——hooks 数量每次渲染都要一致
   const openProjectForSync = openId ? (data?.projects.find((p) => p.id === openId) ?? null) : null;
-  const obsSync = useObsidianSync(openProjectForSync, obsidian, updateProject);
+  const obsSync = useObsidianSync(openProjectForSync, obsidian, applyVaultMerge);
+
+  // 更新状态：GET 只读服务端本地缓存（不发网络请求），有新版才在首页提一行；
+  // 真正的检查在设置页按钮或「启动时检查」开关（默认关）
+  const [updateInfo, setUpdateInfo] = useState<UpdateStatus | null>(null);
+  const refreshUpdate = useCallback(() => {
+    fetchUpdateStatus()
+      .then((s) => {
+        setUpdateInfo(s);
+        // 开了开关但服务端还没查过（刚打开开关没重启），或缓存里已有新版：补/刷一次
+        if (s.enabled && (!s.checkedAt || s.available)) return checkUpdateNow();
+      })
+      .then((s) => s && setUpdateInfo(s))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshUpdate();
+  }, [refreshUpdate]);
 
   if (!data || !aiInfo) {
     return (
@@ -998,6 +1083,7 @@ export default function App() {
             ideas={activeIdeas}
             stats={data.stats}
             aiReady={aiInfo.ready}
+            updateHint={updateInfo?.available ? updateInfo.latest : ''}
             onNavigate={(v) => {
               setOpenId(null);
               setView(v);
@@ -1058,6 +1144,7 @@ export default function App() {
             onAddRule={addRule}
             onCards={(c) => setData((prev) => prev && { ...prev, cards: c })}
             todayWords={todayWords}
+            onSprint={recordSprint}
             obsSync={obsSync}
             promptOverrides={promptOverrides}
             ghostEnabled={ghostOn && aiInfo.ready}

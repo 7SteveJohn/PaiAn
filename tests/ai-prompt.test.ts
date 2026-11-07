@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Chapter, Project } from '../src/types';
-import { AI_ACTIONS, JUDGED_ACTIONS, buildMessages, buildRunContext, isJudged } from '../src/ai-prompt';
+import { AI_ACTIONS, JUDGED_ACTIONS, buildDraftMessages, buildMessages, buildRunContext, isJudged } from '../src/ai-prompt';
 
 const rules = [{ name: 'r', content: '不要用破折号', on: true }];
 // 头尾各埋一句可辨认的话，断言「只喂末尾 1500 字」才有意义
@@ -168,5 +168,53 @@ test('buildMessages：简介按书名与备注写，system 守住不复述资料
   assert.ok(m[1].content.includes('简介'), `user 要说清是写简介：${m[1].content.slice(0, 60)}`);
   assert.ok(m[1].content.includes('120 字'), 'user 要说清字数上限');
   assert.ok(m[1].content.includes('灵气枯竭的世界'), '作者备注要带给模型');
-  assert.ok(m[0].content.includes('不要复述资料'), 'system 要带「不要复述资料」这条边界');
+  assert.ok(m[0].content.includes('不复述'), 'system 要带不复述资料的边界（成稿纪律短版里也有）');
+});
+
+test('ooc：整章前 3000 字进 user，语境块里的人物卡是判据，明确只判不写', () => {
+  const m = buildMessages('ooc', proj(), '', rules, chapter);
+  assert.equal(m.length, 2);
+  assert.ok(m[1].content.includes('开头独有的那句话'), '送整章正文（前 3000 字）');
+  assert.ok(m[1].content.includes('只判不写'));
+  assert.ok(m[1].content.includes('说话人'), '要模型报说话人');
+  assert.ok(m[1].content.includes('不要硬凑'), '没可疑时要直说，不许硬凑');
+  const ctx = buildRunContext('ooc', longBody, { start: 0, end: 0 }, chapter.title);
+  assert.equal(ctx.kind, 'chapter');
+  assert.deepEqual(ctx.range, [0, 3000], '长章素材截前 3000 字');
+});
+
+test('hook：只送头尾两截；超 800 字时 range 不给（跨度不连续）', () => {
+  const m = buildMessages('hook', proj(), '', rules, chapter);
+  const u = m[1].content as string;
+  assert.ok(u.includes('【开头】') && u.includes('【结尾】'));
+  assert.ok(u.includes('开头独有的那句话'), '开头 400 字在内');
+  assert.ok(u.includes('结尾独有的那句话'), '结尾 400 字在内');
+  assert.ok(u.includes('强 / 中 / 弱'), '要评级');
+  assert.ok(u.includes('不要替我写出新句子'), '只判不写');
+  const ctx = buildRunContext('hook', longBody, { start: 0, end: 0 }, chapter.title);
+  assert.equal(ctx.kind, 'chapter');
+  assert.equal(ctx.range, null, '头尾拼接跨度不连续，不给 range');
+  assert.ok(ctx.snippet.includes('（中段略）'));
+  const short = buildRunContext('hook', '短文', { start: 0, end: 0 });
+  assert.deepEqual(short.range, [0, 2], '短文整体送，range 连续');
+});
+
+test('AI_ACTIONS：ooc / hook 都不依赖选区（整章级判断）', () => {
+  for (const key of ['ooc', 'hook'] as const) {
+    const a = AI_ACTIONS.find((x) => x.key === key);
+    assert.ok(a, `${key} 动作要存在`);
+    assert.equal(a.needSelection, false);
+    assert.equal(isJudged(key, true), false, '分析类动作本来就不写正文，不受只判开关影响');
+  }
+});
+
+test('成稿纪律：draft / continue / blurb 的身份句都带上反 AI 味纪律，且位于可缓存区', () => {
+  const draft = buildDraftMessages(proj(), chapter, 2000, rules);
+  assert.ok(draft[0].content.includes('成稿纪律'), 'draft 身份句要带纪律');
+  assert.ok(draft[0].content.includes('不总结、不点题'), '纪律里要有收尾禁令');
+  const cont = buildMessages('continue', proj(), '', rules, chapter);
+  assert.ok(cont[0].content.includes('成稿纪律'), '续写身份句要带纪律（短版）');
+  const blurb = buildMessages('blurb', proj(), '', rules, chapter);
+  assert.ok(blurb[0].content.includes('成稿纪律'), '简介身份句要带纪律（短版）');
+  assert.ok(cont[0].content.indexOf('成稿纪律') < cont[0].content.indexOf('【作品设定与备注】'), '纪律在语境块之前，不吃缓存命中');
 });

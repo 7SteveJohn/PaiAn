@@ -142,7 +142,7 @@
     await gotoWrite();
     const before = domCount();
     for (let i = 0; i < 20; i++) {
-      const act = ['对照', '历史版本', '投稿体检'][i % 3];
+      const act = ['对照', '历史版本', '体检'][i % 3];
       // 历史版本按钮带计数（「历史版本（1）」），得按前缀认
       const b = await hunt(
         async () => [...document.querySelectorAll('button')].find((x) => (act === '历史版本' ? (x.innerText || '').trim().startsWith('历史版本') : (x.innerText || '').trim() === act)) || null,

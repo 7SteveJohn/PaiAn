@@ -4,7 +4,7 @@ import type { AIPublic, Chapter, Project } from './types';
 import { buildAiContext, rulesSuffix } from './util';
 import type { ChatMessage } from './api';
 
-export type AiAction = 'continue' | 'polish' | 'expand' | 'para' | 'draft' | 'title' | 'blurb' | 'outline' | 'assoc' | 'sensory' | 'pov' | 'tension' | 'voice' | 'gdialog' | 'gquest' | 'ggdd';
+export type AiAction = 'continue' | 'polish' | 'expand' | 'para' | 'draft' | 'title' | 'blurb' | 'outline' | 'assoc' | 'sensory' | 'pov' | 'tension' | 'voice' | 'ooc' | 'hook' | 'gdialog' | 'gquest' | 'ggdd';
 
 export const AI_ACTIONS: { key: AiAction; label: string; needSelection: boolean; hint: string; game?: boolean }[] = [
   { key: 'continue', label: '续写', needSelection: false, hint: '从本章结尾接着往下写' },
@@ -19,6 +19,8 @@ export const AI_ACTIONS: { key: AiAction; label: string; needSelection: boolean;
   { key: 'pov', label: '视角校验', needSelection: true, hint: '检查选段是否有视角越界' },
   { key: 'tension', label: '张力分析', needSelection: true, hint: '检查对话是否缺少潜台词' },
   { key: 'voice', label: '风格采样', needSelection: true, hint: '采样选中对话的句式与口头禅，给出风格约束' },
+  { key: 'ooc', label: 'OOC 检查', needSelection: false, hint: '对照人物卡逐句检查本章台词像不像本人，只判不写' },
+  { key: 'hook', label: '钩子体检', needSelection: false, hint: '看本章开头与结尾留没留钩，只判不写' },
   { key: 'gdialog', label: '对话树', needSelection: false, game: true, hint: '把本章正文改写成剧情游戏对话树（场景/台词/选项跳转）' },
   { key: 'gquest', label: '任务脚本', needSelection: false, game: true, hint: '把本章情节拆成游戏任务事件脚本（目标/NPC/奖励/分支）' },
   { key: 'ggdd', label: '改编策划', needSelection: false, game: true, hint: '输出本章节游戏化改编策划案（关卡形态/玩法循环/系统建议）' },
@@ -32,6 +34,21 @@ export const isJudged = (action: AiAction, judgeOnly?: boolean) => !!judgeOnly &
 const JUDGE_TAIL =
   '\n\n【只判不写】这次不要产出成品正文：不要写出可以直接粘进稿子的段落或句子。' +
   '给判断、依据、可选方向与各自的代价；需要指位置时引一句现有原文当坐标就够了。写正文这件事只属于作者。';
+
+// 成稿纪律：所有「产出正文」类动作共用。抽象词（自然/真诚）模型听不懂，
+// 落成可执行的禁令——与 deslop 自检词表同一套取向，生成端和自检端说同一种话。
+const CRAFT_RULES =
+  '\n\n成稿纪律（每一条都算数）：\n' +
+  '1. 只输出正文本身：不解释、不复述资料、不写标题，写完就停。\n' +
+  '2. 结尾停在动作或对话上：不总结、不点题、不抒情收束。\n' +
+  '3. 情绪用动作和细节带出来，不写「心中一惊」「暗道不妙」这类标签。\n' +
+  '4. 一章比喻至多两处，「仿佛/像是」能删就删，直陈最有力。\n' +
+  '5. 不用「然而」「与此同时」「下一刻」开头或转场，转场靠场景与动作。\n' +
+  '6. 对白各有各的说法：口语、身份、习惯对上号，不要人人都文绉绉。';
+
+// 短版：字数少的产出（续写/简介）带全量纪律太重，留三条核心
+const CRAFT_RULES_SHORT =
+  '\n\n成稿纪律：只输出正文本身，不解释不复述；结尾停在动作或对话上，不总结不点题；情绪用动作带出来，比喻和「然而/与此同时」少用。';
 
 // ---------- 提示词开放：四个入口的 system 身份句可被 data/prompts/<key>.md 覆盖 ----------
 export type PromptKey = 'advisor' | 'advisor-judge' | 'draft' | 'chat';
@@ -54,7 +71,7 @@ export const PROMPT_DEFS: { key: PromptKey; label: string; fallback: string }[] 
     key: 'draft',
     label: '生成草稿',
     fallback:
-      '你是一位专业的中文写作助手，正在为长篇{type}《{title}》撰写章节正文初稿。文风自然、真诚，不堆砌辞藻。只输出正文本身，不要解释，不要输出章节标题，不要复述资料。',
+      '你是一位专业的中文写作助手，正在为长篇{type}《{title}》撰写章节正文初稿。尊重资料里的既有语气与文风，写得像个活人。' + CRAFT_RULES,
   },
   { key: 'chat', label: 'AI 对话', fallback: '你是一位经验丰富的中文写作伙伴，与创作者自由讨论选题、结构、素材与写作技巧。回答实用、具体、不空谈，语气自然，适当用 Markdown 分点。' },
 ];
@@ -119,7 +136,7 @@ export function buildMessages(
           { role: 'user', content: `下面是${chapter ? `「${chapter.title}」` : '本文'}的结尾。请判断接下来该往哪儿走：给 3 种走向（每种一句话），各说清它会引出什么后果、跟已写的人物动机合不合拍，最后指出你更建议哪一种、为什么。\n\n"""${draftTail || '（正文还是空的：那就判断一下这个该立在什么之上）'}"""` },
         ];
       return [
-        { role: 'system', content: `你是一位专业的中文写作助手，正在协助创作者完成${workName}。文风自然、真诚，不堆砌辞藻，尊重作者原有的语气与风格。只输出正文内容本身，不要解释，紧接已有情节写，不要复述资料。` + rulesSuffix(rules) + context + echoBlock },
+        { role: 'system', content: `你是一位专业的中文写作助手，正在协助创作者完成${workName}。尊重作者原有的语气与风格。` + CRAFT_RULES_SHORT + rulesSuffix(rules) + context + echoBlock },
         { role: 'user', content: `请为${chapter ? `「${chapter.title}」` : '本文'}续写约 300 字。以下是正文结尾部分，请自然地接着写，不要重复已有内容：\n\n"""${draftTail || '（正文还是空的，请根据作品资料写一个开头）'}"""` },
       ];
     case 'para':
@@ -161,10 +178,39 @@ export function buildMessages(
     case 'voice':
       user = `采样以下对话的语言风格：总结这个角色的口头禅、句式习惯、语气特征，输出一份「风格约束清单」供我后续自己写台词时对照，不要生成新台词：\n\n"""${selection}"""`;
       break;
+    case 'ooc':
+      // OOC 是整章对人物卡判台词，不吃选区；语境块里的人物卡就是判据
+      return [
+        { role: 'system', content: base },
+        {
+          role: 'user',
+          content:
+            `请对照资料里的人物卡，检查下面这段正文里的台词是否「像本人」。只判不写：\n` +
+            `1. 挑出最可疑的台词（最多 5 句），每条给：引用原句（30 字内）＋说话人＋哪里不像（对照卡片里的身份、关系、当前状态与语气习惯）。\n` +
+            `2. 全都对味就直说「没发现出戏的台词」，不要硬凑。\n` +
+            `3. 不要替我改写台词，不要写新对白。\n\n"""${(chapter?.content || project.draft || '').slice(0, 3000) || '（正文还是空的：那就判断一下这些人物卡立不立得住）'}"""`,
+        },
+      ];
+    case 'hook': {
+      // 钩子体检只看头尾两截：开头 400 与结尾 400，中段与本判断无关就不花 token
+      const body = chapter?.content || project.draft || '';
+      return [
+        { role: 'system', content: base },
+        {
+          role: 'user',
+          content:
+            `请给这一章的「钩子」做个体检，只判不写：\n` +
+            `【开头】\n"""${body.slice(0, 400) || '（开头还没有字）'}"""\n` +
+            `【结尾】\n"""${body.slice(-400) || '（结尾还没有字）'}"""\n\n` +
+            `分别回答：开头有没有让人想往下翻的钩子（悬念 / 冲突 / 反差）；结尾是「想立刻看下一章」还是「可以放下」。` +
+            `各给一个「强 / 中 / 弱」评级加一句话理由；评级为弱时，指出该在哪个位置补钩（引现有原文当坐标），不要替我写出新句子。`,
+        },
+      ];
+    }
     case 'blurb':
       // 简介是文案不是正文：不受「只判不写」转换，也不吃选区；资料走 system 的语境块，备注在 user 里点名
       return [
-        { role: 'system', content: `你是一位专业的中文写作助手，正在协助创作者完成${workName}。文风自然、真诚，不堆砌辞藻，尊重作者原有的语气与风格。只输出正文内容本身，不要解释，紧接已有情节写，不要复述资料。` + rulesSuffix(rules) + context + echoBlock },
+        { role: 'system', content: `你是一位专业的中文写作助手，正在协助创作者完成${workName}。尊重作者原有的语气与风格。` + CRAFT_RULES_SHORT + rulesSuffix(rules) + context + echoBlock },
         { role: 'user', content: `为${workName}写一段书籍简介，120 字以内：钩子先行，点出核心冲突或反差，结尾留期待。不要分点，不要剧透结局。作者备注与作品资料见下。\n\n"""${project.notes || '（作者没留备注，按作品资料发挥）'}"""` },
       ];
     case 'gdialog':
@@ -239,14 +285,25 @@ export function buildRunContext(
     // 大纲 prompt 不带正文片段，标记为 none（UI 不展开语境卡）
     return { kind: 'none', chapterTitle, snippet: '', range: null, fullLen };
   }
-  if (action === 'gdialog' || action === 'gquest' || action === 'ggdd') {
-    // 游戏改编类取整章正文（截前 3000 字作素材）
+  if (action === 'gdialog' || action === 'gquest' || action === 'ggdd' || action === 'ooc') {
+    // 整章素材类取正文前 3000 字（游戏改编/OOC 都在这个量级内够用）
     const len = Math.min(3000, fullLen);
     return {
       kind: 'chapter',
       chapterTitle,
       snippet: doc.slice(0, 3000),
       range: fullLen > 0 ? [0, len] : null,
+      fullLen,
+    };
+  }
+  if (action === 'hook') {
+    // 头尾两截，中段略：跨度不连续，就不给 range（UI 不展开位置换算）
+    const short = fullLen <= 800;
+    return {
+      kind: 'chapter',
+      chapterTitle,
+      snippet: short ? doc : doc.slice(0, 400) + '\n…（中段略）…\n' + doc.slice(-400),
+      range: short && fullLen > 0 ? [0, fullLen] : null,
       fullLen,
     };
   }

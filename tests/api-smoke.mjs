@@ -420,6 +420,30 @@ step('单章快路径：PUT /api/chapter 只动那一章的 content，其他章�
   assertEq(np.title, '快照分流书', '书名不该被动');
 });
 
+step('单章快路径捎带当日字数：并入 stats.json 的 daily；值没变不重写、负数压到 0', async (base, dataDir) => {
+  const statsFile = path.join(dataDir, 'stats.json');
+  const put = (count, day) =>
+    fetch(base + '/api/chapter', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: 'pv1', chapterId: 'pc2', content: '快路径写入的新正文', dailyDate: day, dailyToday: count }),
+    });
+  const r1 = await put(777, '2030-01-02');
+  assertEq(r1.status, 200, '捎带当日字数的状态码');
+  const stats = JSON.parse(readFileSync(statsFile, 'utf-8'));
+  assertEq(stats.daily['2030-01-02'], 777, '当日字数已并入 stats.json');
+
+  const m1 = statSync(statsFile).mtimeMs;
+  const r2 = await put(777, '2030-01-02');
+  assertEq(r2.status, 200, '同值再发一次的状态码');
+  assertEq(statSync(statsFile).mtimeMs, m1, '值没变就不动盘（打字每键都发，不该每次都写）');
+
+  const r3 = await put(-5, '2030-01-02');
+  assertEq(r3.status, 200, '负数也照常受理');
+  const stats3 = JSON.parse(readFileSync(statsFile, 'utf-8'));
+  assertEq(stats3.daily['2030-01-02'], 0, '负数字数压到 0 下限');
+});
+
 step('永久删除不触发 stale：id 集合只减不增的写入是故意的', async (base, dataDir) => {
   const book = (id, day) => ({ id, title: id, draft: '', notes: '', linkedIdeaIds: [], chapters: [], updatedAt: day });
   // 先立两本：purgeA 更新（09-12），purgeB 更旧（09-11）→ stamp = 09-12
@@ -961,12 +985,63 @@ step('拆文对标：只回统计，脏值被清洗、超量被截断', async (b
   assertEq((await (await fetch(base + '/api/benchmarks')).json()).books.length, 0, '脏请求把表清成空');
 });
 
+step('检查更新：强制检查走 mock Releases，比出新版；开关独立保存不动别的偏好', async (base) => {
+  const r = await fetch(base + '/api/check-update', { method: 'POST' });
+  assertEq(r.status, 200, '检查状态码');
+  const j = await r.json();
+  assertEq(j.latest, '9.9.9', 'tag 剥掉 v 前缀');
+  assertEq(j.available, true, '当前 1.0.2 应判出 v9.9.9 是新版');
+  assert(j.url.includes('releases'), '要带回发布页地址');
+  const s = await (await fetch(base + '/api/update-status')).json();
+  assertEq(s.enabled, false, '开关默认关');
+  assertEq(s.current, '1.0.2', '当前版本来自 package.json');
+  assertEq(s.available, true, '状态端点回缓存里的比对结果（不再发网络）');
+  const w = await fetch(base + '/api/app-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ closeToTray: true, checkUpdate: true }),
+  });
+  assertEq(w.status, 200, '开关写入');
+  const after = await (await fetch(base + '/api/app-settings')).json();
+  assertEq(after.checkUpdate, true, '开关往返');
+  assertEq(after.mirrorDir || '', '', '没传镜像目录字段时不该凭空造出来');
+});
+
+step('偏好设置：镜像目录写入 app.json，只改关 X 行为不清掉它', async (base, dataDir) => {
+  const w = await fetch(base + '/api/app-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ closeToTray: true, mirrorDir: ' D:\\backup\\拍案 ' }),
+  });
+  assertEq(w.status, 200, '写入状态码');
+  assertEq((await (await fetch(base + '/api/app-settings')).json()).mirrorDir, 'D:\\backup\\拍案', '镜像目录去掉首尾空白后落盘');
+  // 只保存关 X 行为：镜像目录不该被顺手清掉
+  const w2 = await fetch(base + '/api/app-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ closeToTray: false }),
+  });
+  assertEq(w2.status, 200, '第二次写入状态码');
+  const after = await (await fetch(base + '/api/app-settings')).json();
+  assertEq(after.closeToTray, false, '关 X 行为已更新');
+  assertEq(after.mirrorDir, 'D:\\backup\\拍案', '镜像目录还在');
+  const appFile = JSON.parse(readFileSync(path.join(dataDir, 'app.json'), 'utf-8'));
+  assertEq(appFile.mirrorDir, 'D:\\backup\\拍案', 'app.json 独立落盘');
+});
+
 async function main() {
   const port = await freePort();
   const dataDir = mkdtempSync(path.join(tmpdir(), 'wb-smoke-'));
+  // 检查更新的 mock Releases 接口：冒烟绝不真打 GitHub
+  const ghMock = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ tag_name: 'v9.9.9', name: '冒烟测试版', html_url: 'https://github.com/7SteveJohn/PaiAn/releases/tag/v9.9.9', published_at: '2026-11-07T00:00:00Z' }));
+  });
+  await new Promise((r) => ghMock.listen(0, '127.0.0.1', r));
+  const ghUrl = `http://127.0.0.1:${ghMock.address().port}/releases/latest`;
   const child = spawn(process.execPath, [serverJs], {
     cwd: root,
-    env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, WB_DATA_DIR: dataDir, WB_MAX_BODY_MB: '2' }, // WB_DATA_DIR 双保险：绝不落到真实数据目录
+    env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, WB_DATA_DIR: dataDir, WB_MAX_BODY_MB: '2', WB_UPDATE_API: ghUrl }, // WB_DATA_DIR 双保险：绝不落到真实数据目录
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '';
@@ -1002,6 +1077,7 @@ async function main() {
   } finally {
     child.kill();
     await new Promise((r) => child.once('exit', r));
+    await new Promise((r) => ghMock.close(r));
     rmSync(dataDir, { recursive: true, force: true });
   }
 

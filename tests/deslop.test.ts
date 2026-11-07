@@ -80,3 +80,15 @@ test('性能：百万字级整本按章扫描有上限（不得在长书上失�
   assert.ok(ms < 200, `400 章整本扫描应在毫秒级，实测 ${ms.toFixed(0)}ms`);
   console.log(`      （400 章 × 2500 字整本扫描 ${ms.toFixed(0)}ms，命中 ${hits} 处）`);
 });
+
+test('命中：空气凝固 / 情绪标签 / 不禁加腔 / 瞬间抢拍', () => {
+  const k = keys('空气仿佛凝固了。她心头一紧，不禁后退半步。\n瞬间，灯塔亮了。');
+  for (const key of ['air-freeze', 'heart-tag', 'bujin', 'shunjian']) assert.ok(k.has(key), `应命中 ${key}，实际 ${[...k].join(',')}`);
+});
+
+test('不误伤：对白里的同类说法不算（提示层只管叙述腔）；句中瞬间不抢拍', () => {
+  assert.ok(!keys('「空气仿佛凝固了。」他说，声音里不禁带了笑。').has('air-freeze'), '引号内不报');
+  assert.ok(!keys('「我不禁笑了。」').has('bujin'), '引号内不报');
+  assert.ok(!keys('他说完，瞬间就后悔了。').has('shunjian'), '句中「瞬间」不是开头抢拍');
+  assert.ok(!keys('那凝固的松脂包住了虫子。').has('air-freeze'), '物理凝固不是烘托');
+});

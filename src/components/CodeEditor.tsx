@@ -82,17 +82,8 @@ const marksField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
-// ---------- 禁用词练笔：命中词浅灰温和提醒 ----------
+// ---------- 禁用词练笔：命中词浅灰温和提醒（词表本体由调用方持有，字段只存装饰） ----------
 const setForbidden = StateEffect.define<string[]>();
-const forbiddenWordsField = StateField.define<string[]>({
-  create: () => [],
-  update(words, tr) {
-    for (const e of tr.effects) {
-      if (e.is(setForbidden)) return e.value;
-    }
-    return words;
-  },
-});
 const forbiddenField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(deco, tr) {
@@ -100,11 +91,9 @@ const forbiddenField = StateField.define<DecorationSet>({
     for (const e of tr.effects) {
       if (e.is(setForbidden)) wordsChanged = true;
     }
-    if (!tr.docChanged && !wordsChanged) return deco;
-    deco = deco.map(tr.changes);
-    const words = wordsChanged
-      ? tr.effects.filter((e): e is ReturnType<typeof setForbidden.of> => e.is(setForbidden)).pop()!.value
-      : tr.startState.field(forbiddenWordsField);
+    // 词表没变时只映射既有命中的位置（打字不重扫）；全量重扫由调用方防抖后重新下发词表触发
+    if (!wordsChanged) return tr.docChanged ? deco.map(tr.changes) : deco;
+    const words = tr.effects.filter((e): e is ReturnType<typeof setForbidden.of> => e.is(setForbidden)).pop()!.value;
     const b: Range<Decoration>[] = [];
     const doc = tr.state.doc.toString();
     for (const w of words) {
@@ -184,13 +173,14 @@ const baseExtensions: Extension[] = [
   EditorView.lineWrapping,
   editorTheme,
   syntaxHighlighting(highlight),
-  forbiddenWordsField,
   forbiddenField,
   flavorField,
   marksField,
   EditorView.updateListener.of((u) => {
     if (u.docChanged) {
-      onChangeRef.current(u.state.doc.toString());
+      const text = u.state.doc.toString();
+      lastEmittedRef.current = text;
+      onChangeRef.current(text);
       ghostDocChangeRef.current(u.view);
     }
     if (u.selectionSet) {
@@ -217,6 +207,8 @@ interface Props {
 
 const onChangeRef = { current: (_v: string) => {} };
 const onSelectionRef = { current: (_f: number, _t: number, _v: EditorView) => {} };
+// onChange 刚发出去的正文：回灌 effect 拿它做 O(1) 引用短路，省掉打字时第二次全文物化
+const lastEmittedRef = { current: '' };
 // 幽灵字续写：文档停变 1.5s 后向模型要一句，Tab 采纳；逻辑全在挂载 effect 里（见下）
 const ghostDocChangeRef = { current: (_v: EditorView) => {} };
 
@@ -310,9 +302,10 @@ export default function CodeEditor({
       if (!ghostEnabledRef.current || composing || inflight) return;
       const sel = view.state.selection.main;
       if (!sel.empty) return;
-      const docText = view.state.doc.toString();
-      if (docText.length <= 300) return;
-      const tail = docText.slice(Math.max(0, sel.head - 500), sel.head);
+      // 只要光标前 500 字：doc.length O(1) 判门槛，sliceString 免掉整文物化
+      if (view.state.doc.length <= 300) return;
+      const head = Math.max(0, sel.head - 500);
+      const tail = view.state.doc.sliceString(head, sel.head);
       inflight = true;
       const controller = new AbortController();
       abort = controller;
@@ -401,22 +394,33 @@ export default function CodeEditor({
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
+    // 自己刚发出去的值（updateChapter 原样存回 state，引用相等）直接短路：
+    // 否则每键都要 toString 全文物化一次，单文档大稿时这是每键最贵的一步
+    if (value === lastEmittedRef.current) return;
     const current = view.state.doc.toString();
-    if (value === current) return;
+    if (value === current) {
+      lastEmittedRef.current = value;
+      return;
+    }
     const anchor = Math.min(view.state.selection.main.anchor, value.length);
     view.dispatch({
       changes: { from: 0, to: current.length, insert: value },
       selection: { anchor },
       annotations: externalChange.of(true),
     });
+    lastEmittedRef.current = value;
   }, [value]);
 
   useEffect(() => {
     viewRef.current?.dispatch({ effects: setMarks.of(marks ?? []) });
   }, [marks]);
+  // 禁用词重扫防抖：打字期间只映射既有命中（字段内做），停 250ms 后按当前词表全量重扫一次
   useEffect(() => {
-    viewRef.current?.dispatch({ effects: setForbidden.of(forbidden ?? []) });
-  }, [forbidden]);
+    const t = window.setTimeout(() => {
+      viewRef.current?.dispatch({ effects: setForbidden.of(forbidden ?? []) });
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [forbidden, value]);
   useEffect(() => {
     viewRef.current?.dispatch({ effects: setFlavor.of(flavor ?? []) });
   }, [flavor]);

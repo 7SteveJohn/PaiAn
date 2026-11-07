@@ -238,24 +238,33 @@ export function flatKeysToStore(flat) {
   return store;
 }
 
-// 把一份扁平增量并进现有侧车：空数组表示删掉这条 key，其它按 key 覆盖
+// 把一份扁平增量并进现有侧车：空数组表示删掉这条 key，其它按 key 覆盖。
+// 写时复制代替整表深拷贝：几十 MB 的快照表，每次增量 PUT 只碰一两把 key，
+// structuredClone 会把所有快照正文抄一遍（内存尖峰 + 延迟），没碰的条目引用直通即可。
 export function mergeFlatIntoStore(store, flat) {
-  const next = structuredClone(store ?? {});
+  const src = store ?? {};
+  const next = { ...src };
   for (const [key, list] of Object.entries(flat && typeof flat === 'object' ? flat : {})) {
     const arr = Array.isArray(list) ? list : [];
     const i = key.indexOf(VERSION_SEP);
     if (i < 0) {
-      if (arr.length) (next[key] ||= {}).project = arr;
-      else if (next[key]) delete next[key].project;
+      if (arr.length) next[key] = { ...(src[key] ?? {}), project: arr };
+      else if (src[key]) {
+        const entry = { ...src[key] };
+        delete entry.project;
+        next[key] = entry;
+      }
       continue;
     }
     const pid = key.slice(0, i);
     const cid = key.slice(i + VERSION_SEP.length);
+    const prev = next[pid] ?? src[pid];
     if (arr.length) {
-      const entry = (next[pid] ||= {});
-      (entry.chapters ||= {})[cid] = arr;
-    } else if (next[pid]?.chapters) {
-      delete next[pid].chapters[cid];
+      next[pid] = { ...prev, chapters: { ...(prev?.chapters ?? {}), [cid]: arr } };
+    } else if (prev?.chapters && cid in prev.chapters) {
+      const chapters = { ...prev.chapters };
+      delete chapters[cid];
+      next[pid] = { ...prev, chapters };
     }
   }
   return sanitizeVersions(next);

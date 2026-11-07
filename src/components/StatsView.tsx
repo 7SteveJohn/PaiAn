@@ -58,6 +58,11 @@ export default function StatsView({ projects, stats, onReflection, onDailyGoal }
   const statusCounts = STATUSES.map((s) => ({ s, n: projects.filter((p) => p.status === s).length }));
   const maxStatus = Math.max(...statusCounts.map((x) => x.n), 1);
 
+  // 冲刺成绩：累计与今日（stats.sprints 随自动保存落盘，写作页冲刺计时器写入）
+  const sprints = useMemo(() => stats.sprints ?? [], [stats]);
+  const sprintTotal = sprints.reduce((a, s) => a + s.words, 0);
+  const sprintToday = sprints.filter((s) => s.at.slice(0, 10) === today).length;
+
   // 近 20 周（140 天）写作热力图
   const heat = useMemo(() => {
     const cells: { date: string; words: number }[] = [];
@@ -164,6 +169,13 @@ export default function StatsView({ projects, stats, onReflection, onDailyGoal }
             <em>篇</em>
           </div>
           <div className="stat-label">进行中项目</div>
+        </div>
+        <div className="stat-block" title={`冲刺累计 ${sprintTotal} 字；今天 ${sprintToday} 趟`}>
+          <div className="stat-num">
+            {sprints.length}
+            <em>趟</em>
+          </div>
+          <div className="stat-label">码字冲刺{todayWords > 0 && sprintToday > 0 ? ` · 今日 ${sprintToday}` : ''}</div>
         </div>
       </div>
 

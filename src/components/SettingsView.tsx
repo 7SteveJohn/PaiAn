@@ -10,6 +10,7 @@ import {
   openDataFolder,
   fetchAiKey,
   fetchAppSettings,
+  checkUpdateNow,
   fetchBackups,
   fetchBackupBundle,
   type BackupBundle,
@@ -102,11 +103,48 @@ export default function SettingsView({ aiInfo, dataDir, data, obsidian, onConfig
     }
   };
   const [genMsg, setGenMsg] = useState("");
+  const [mirrorDir, setMirrorDir] = useState('');
+  const [updOn, setUpdOn] = useState(false);
+  const [updMsg, setUpdMsg] = useState('');
+  const [updInfo, setUpdInfo] = useState<{ latest: string; url: string; current: string } | null>(null);
+  const [checking, setChecking] = useState(false);
   useEffect(() => {
     fetchAppSettings()
-      .then((s) => setCloseMode(s.closeToTray === false ? 'quit' : 'tray'))
+      .then((s) => {
+        setCloseMode(s.closeToTray === false ? 'quit' : 'tray');
+        setMirrorDir(s.mirrorDir ?? '');
+        setUpdOn(s.checkUpdate === true);
+      })
       .catch(() => setCloseMode("tray"));
   }, []);
+  // 检查更新：开关是「不联网」承诺的一部分——默认关，开了才在启动时访问 GitHub Releases
+  const changeUpdOn = async (on: boolean) => {
+    setUpdOn(on);
+    try {
+      await saveAppSettings({ closeToTray: closeMode !== 'quit', mirrorDir, checkUpdate: on });
+      setGenMsg(on ? '已开：每次启动时查一次新版本（只这一个请求，不带任何你的数据）。' : '已关：不再自动检查更新。');
+    } catch (e) {
+      setGenMsg('保存失败：' + (e as Error).message);
+    }
+  };
+  const manualCheck = async () => {
+    setChecking(true);
+    setUpdMsg('正在查…');
+    try {
+      const s = await checkUpdateNow();
+      if (s.available) {
+        setUpdInfo({ latest: s.latest, url: s.url, current: s.current });
+        setUpdMsg(`发现新版本 v${s.latest}（当前 v${s.current}）`);
+      } else {
+        setUpdInfo(null);
+        setUpdMsg(s.error || `已是最新（v${s.current}）`);
+      }
+    } catch (e) {
+      setUpdMsg('检查失败：' + (e as Error).message);
+    } finally {
+      setChecking(false);
+    }
+  };
   const changeCloseMode = async (mode: "tray" | "quit") => {
     setCloseMode(mode);
     try {
@@ -115,6 +153,23 @@ export default function SettingsView({ aiInfo, dataDir, data, obsidian, onConfig
     } catch (e) {
       setGenMsg('保存失败：' + (e as Error).message);
     }
+  };
+  // 备份镜像目录：自动备份时同一天再抄一份到第二落点（另一块盘 / 同步盘），留空关闭
+  const saveMirrorDir = async (dir: string) => {
+    const clean = dir.trim();
+    setMirrorDir(clean);
+    try {
+      await saveAppSettings({ closeToTray: closeMode !== 'quit', mirrorDir: clean });
+      setGenMsg(clean ? `已设镜像目录：${clean}（下一次自动备份生效）` : '已关闭镜像备份。');
+    } catch (e) {
+      setGenMsg('保存失败：' + (e as Error).message);
+    }
+  };
+  const pickMirrorDir = async () => {
+    const wb = (window as unknown as { wb?: { pickDataDir?: () => Promise<string | null> } }).wb;
+    if (!wb?.pickDataDir) return; // 浏览器源码运行版没有目录选择对话框，手输路径
+    const dir = await wb.pickDataDir();
+    if (dir) void saveMirrorDir(dir);
   };
   const changeDocFs = (v: string) => {
     setDocFs(v);
@@ -332,7 +387,7 @@ export default function SettingsView({ aiInfo, dataDir, data, obsidian, onConfig
         gacha: b.gacha ?? data.gacha,
         cards: b.cards ?? data.cards,
       },
-      { chat: b.chat?.sessions, benchmarks: b.benchmarks, ai: b.ai && typeof b.ai === 'object' ? b.ai : null },
+      { chat: b.chat?.sessions, benchmarks: b.benchmarks, ai: b.ai && typeof b.ai === 'object' ? b.ai : null, prompts: b.prompts },
     );
   };
 
@@ -490,6 +545,42 @@ export default function SettingsView({ aiInfo, dataDir, data, obsidian, onConfig
                 <option value="18px">大</option>
               </select>
             </label>
+            <div className="field">
+              <span className="field-label">检查更新</span>
+              <span className="mirror-row">
+                <button className={'chip' + (updOn ? ' on' : '')} onClick={() => void changeUpdOn(!updOn)}>
+                  {updOn ? '开' : '关'}
+                </button>
+                <button className="mini-btn" onClick={() => void manualCheck()} disabled={checking}>
+                  {checking ? '正在查…' : '检查更新'}
+                </button>
+                {updMsg && <span className="hint">{updMsg}</span>}
+                {updInfo && (
+                  <a className="update-link" href={updInfo.url} target="_blank" rel="noreferrer">
+                    v{updInfo.latest} 发布页 ↗（当前 v{updInfo.current}）
+                  </a>
+                )}
+              </span>
+              <span className="hint">默认关。开了之后每次启动查一次 GitHub Releases——只这一个请求，不带任何你的数据；发现新版只在这里和首页提一行，下载安装永远你自己来。</span>
+            </div>
+            <div className="field">
+              <span className="field-label">备份镜像目录（可选）</span>
+              <span className="mirror-row">
+                <input
+                  className="provider-input"
+                  value={mirrorDir}
+                  placeholder="例如 D:\\backup\\拍案——留空关闭"
+                  onChange={(e) => setMirrorDir(e.target.value)}
+                  onBlur={(e) => {
+                    if (e.target.value.trim() !== mirrorDir.trim()) void saveMirrorDir(e.target.value);
+                  }}
+                />
+                <button className="mini-btn" onClick={() => void pickMirrorDir()} title="选一个目录（桌面版）">
+                  选择…
+                </button>
+              </span>
+              <span className="hint">每日自动备份时把同一天再抄一份到这里（另一块盘 / 同步盘），主盘坏了还有一份。恢复入口仍走主备份目录。</span>
+            </div>
             <label className="field">
               <span className="field-label">旧章回响</span>
               <button

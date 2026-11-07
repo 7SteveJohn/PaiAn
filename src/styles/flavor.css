@@ -147,6 +147,14 @@
   opacity: 0.6;
 }
 
+/* 「查一查」与标记按钮之间的分隔线 */
+.sel-menu-sep {
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: 0 3px;
+}
+
 .btn-dot {
   position: absolute;
   top: 3px;
@@ -642,78 +650,92 @@
   color: var(--amber);
 }
 
-.tile-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-bottom: 22px;
+/* 首页数字行：编辑部台历式，细线分隔，不用卡片阵列 */
+.home-figures {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 26px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
-@media (max-width: 900px) {
-  .tile-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.stat-tile {
+.home-figures .figure {
+  flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 6px;
   align-items: flex-start;
-  gap: 8px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 18px 20px;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--line);
+  padding: 16px 20px;
   cursor: pointer;
   font-family: var(--font-ui);
   color: var(--ink);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.stat-tile:hover {
-  transform: translateY(-2px);
-  border-color: var(--c, var(--accent));
-  box-shadow: var(--shadow-md);
+.home-figures .figure:first-child {
+  border-left: none;
+  padding-left: 4px;
 }
 
-.tile-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--c) 14%, transparent);
-  color: var(--c);
+.home-figures .figure:hover .figure-num {
+  color: var(--accent-ink);
 }
 
-.tile-num {
+.figure-num {
   font-family: var(--font-serif);
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.5px;
+  transition: color 0.15s ease;
 }
 
-.tile-label {
+.figure-label {
   color: var(--muted);
   font-size: 12px;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
-.home-grid {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 36px;
+/* 最近项目单列布局 */
+.home-recent {
   margin-top: 8px;
+  max-width: 720px;
 }
 
-@media (max-width: 900px) {
-  .home-grid {
-    grid-template-columns: 1fr;
-  }
+/* 底部常用入口：杂志目录式一行文字链接 */
+.home-links {
+  display: flex;
+  align-items: baseline;
+  gap: 22px;
+  margin-top: 34px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+
+.home-links-label {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.home-links button {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+}
+
+.home-links button:hover {
+  color: var(--accent-ink);
+  border-bottom-color: var(--accent);
 }
 
 .home-col .sec-title {
@@ -788,61 +810,6 @@
 .home-proj:hover svg {
   color: var(--accent);
   transform: translateX(2px);
-}
-
-.feature-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  text-align: left;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 15px 18px;
-  margin-bottom: 10px;
-  cursor: pointer;
-  font-family: var(--font-ui);
-  color: var(--ink);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.feature-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--c, var(--accent));
-  box-shadow: var(--shadow-md);
-}
-
-.feature-card:hover .feature-cta {
-  color: var(--c, var(--accent));
-}
-
-.feature-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.feature-main b {
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.feature-main span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.feature-cta {
-  color: var(--muted);
-  font-size: 12px;
-  flex: none;
-  font-weight: 500;
-  transition: color 0.15s ease;
 }
 
 /* ================= 抽屉/抽卡按钮强化 ================= */

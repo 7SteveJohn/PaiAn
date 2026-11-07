@@ -51,12 +51,13 @@ export async function saveData(data: Pick<AppData, 'ideas' | 'projects' | 'stats
 /**
  * 单章正文快路径：打字场景只改一章时，别为 3MB 整包付网络与磁盘的账。
  * 服务端就地合并进 projects.json；不动 updatedAt、不碰快照——那些仍由整包与快照通道负责。
+ * daily：打字会话的当日字数捎带走（整包通道不来时 stats.json 也不断档），可选。
  */
-export async function saveChapterContent(projectId: string, chapterId: string, content: string): Promise<void> {
+export async function saveChapterContent(projectId: string, chapterId: string, content: string, daily?: { date: string; count: number }): Promise<void> {
   const r = await fetch('/api/chapter', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId, chapterId, content }),
+    body: JSON.stringify({ projectId, chapterId, content, ...(daily ? { dailyDate: daily.date, dailyToday: daily.count } : {}) }),
   });
   if (!r.ok) {
     const j = (await r.json().catch(() => ({}))) as { error?: string };
@@ -67,6 +68,35 @@ export async function saveChapterContent(projectId: string, chapterId: string, c
 /** 通用偏好（点 X 行为等）：存 data/app.json，主进程也读它 */
 export interface AppSettings {
   closeToTray: boolean;
+  /** 备份镜像目录（可选）：自动备份时把同一天再抄一份到这里（另一块盘/同步盘），留空关闭 */
+  mirrorDir?: string;
+  /** 启动时检查更新：默认关——这是「不联网」承诺的一部分，开了才会在启动时访问 GitHub */
+  checkUpdate?: boolean;
+}
+
+/** 检查更新的结果：GET /api/update-status 只回缓存，POST /api/check-update 才真发请求 */
+export interface UpdateStatus {
+  current: string;
+  latest: string;
+  url: string;
+  notes: string;
+  publishedAt?: string;
+  available: boolean;
+  error: string;
+  enabled?: boolean;
+  checkedAt?: number;
+}
+
+export async function fetchUpdateStatus(): Promise<UpdateStatus> {
+  const r = await fetch('/api/update-status');
+  if (!r.ok) throw new Error(`读取更新状态失败（HTTP ${r.status}）`);
+  return (await r.json()) as UpdateStatus;
+}
+
+export async function checkUpdateNow(): Promise<UpdateStatus> {
+  const r = await fetch('/api/check-update', { method: 'POST' });
+  if (!r.ok) throw new Error(`检查更新失败（HTTP ${r.status}）`);
+  return (await r.json()) as UpdateStatus;
 }
 
 export async function fetchAppSettings(): Promise<AppSettings> {
@@ -337,6 +367,7 @@ export interface BackupBundle {
   chat?: { sessions: ChatSession[] };
   benchmarks?: BenchBook[];
   ai?: BackupAI | null;
+  prompts?: Record<string, string>;
 }
 
 export async function fetchBackups(): Promise<BackupInfo[]> {
@@ -357,14 +388,16 @@ export async function fetchBackupBundle(day: string): Promise<BackupBundle> {
   return j;
 }
 
-/** 整包之外的资产：对话、对标记录、AI 配置。恢复时一起写回去，才算真的「全部」 */
+/** 整包之外的资产：对话、对标记录、AI 配置、提示词覆盖。恢复时一起写回去，才算真的「全部」 */
 export interface RestoreExtras {
   chat?: ChatSession[];
   benchmarks?: BenchBook[];
   ai?: BackupAI | null;
+  prompts?: Record<string, string>;
 }
 
-export async function openDataFolder(): Promise<void> {  const res = await fetch('/api/open-folder', { method: 'POST' });
+export async function openDataFolder(): Promise<void> {
+  const res = await fetch('/api/open-folder', { method: 'POST' });
   if (!res.ok) throw new Error('打开目录失败');
 }
 

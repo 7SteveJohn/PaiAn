@@ -246,7 +246,13 @@ export function projectWords(project: { draft: string; mode?: 'single' | 'chapte
 // HomeView 的 stats.daily[today] 直接 TypeError，整站白屏——所以启动时补齐这一处。
 // 只兜证明过会崩的字段，不做全量深校验；normalizeStats 后的值随自动保存写回，落盘即自愈。
 export function normalizeStats(s?: Partial<StatsData> | null): StatsData {
-  return { daily: s?.daily ?? {}, reflection: s?.reflection ?? '', dailyGoal: s?.dailyGoal };
+  return { daily: s?.daily ?? {}, reflection: s?.reflection ?? '', dailyGoal: s?.dailyGoal, sprints: Array.isArray(s?.sprints) ? s.sprints : [] };
+}
+
+// 灵感条目的最小兜底：content 缺失（手改数据/老版本备份）会让写作页「关联灵感」下拉
+// 读 o.content.length 直接白屏整页——与 normalizeStats 同一条防线的思路，只兜证明过会崩的字段。
+export function normalizeIdeas<T extends { content?: string }>(ideas?: T[] | null): (T & { content: string })[] {
+  return (ideas ?? []).map((i) => ({ ...i, content: typeof i.content === 'string' ? i.content : '' }));
 }
 
 // 中文字符按 1 计，连续的英文/数字串按 1 词计
@@ -257,8 +263,22 @@ const LATIN_RE = /[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g;
 /** ⑤ 自动同步的静默时长：写作页停下这么久才推一次，设置页的文案引用同一个数 */
 export const AUTO_SYNC_MS = 12000;
 
+// 打字热路径每键要算「旧值/新值」两次词数：旧字符串引用与上一键的「新值」相同，命中缓存直接免扫。
+// 只按字符串引用比对（内容比对就失去意义了）；留最近几条，防大字符串常驻内存。
+const countCache = new Map<string, number>();
 export function countWords(text: string): number {
-  return text.length - text.replace(CJK_RE, '').length + (text.match(LATIN_RE) ?? []).length;
+  const hit = countCache.get(text);
+  if (hit !== undefined) return hit;
+  const n = text.length - text.replace(CJK_RE, '').length + (text.match(LATIN_RE) ?? []).length;
+  if (countCache.size >= 16) countCache.clear();
+  countCache.set(text, n);
+  return n;
+}
+
+// 快路径的 stats 判据：打字每键字数 +1 都会换新对象引用，引用比必失败，只能比值。
+// stats 是每键只动一个 key 的小对象，stringify 成本可忽略；展开保持 key 原位，顺序稳定可比。
+export function statsEqual(a: StatsData, b: StatsData): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 // ---------- 章节词数增量缓存 ----------
@@ -294,11 +314,4 @@ export function chapterWordMap(
     for (const k of [...c.keys()]) if (!map.has(k)) c.delete(k);
   }
   return { map, cache: c, misses };
-}
-
-export function formatDate(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())}`;
 }

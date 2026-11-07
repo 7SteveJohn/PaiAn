@@ -181,10 +181,21 @@ export interface ChatSession {
   updatedAt: string;
 }
 
+/** 一次码字冲刺的成绩（stats.sprints，随自动保存落盘） */
+export interface SprintRecord {
+  /** 结束时刻（ISO） */
+  at: string;
+  /** 实际计时时长（分钟） */
+  minutes: number;
+  /** 本次冲刺净增字数（今日字数差，删改回扣） */
+  words: number;
+}
+
 export interface StatsData {
   daily: Record<string, number>;
   reflection: string;
   dailyGoal?: number; // 每日目标字数，0/未设置表示不启用
+  sprints?: SprintRecord[]; // 冲刺成绩，只追加，超过 400 条裁掉最老的
 }
 
 // 写作规则：启用后注入所有 AI 调用的系统提示
